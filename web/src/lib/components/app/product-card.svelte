@@ -11,6 +11,7 @@
 	import Archive from '@lucide/svelte/icons/archive';
 	import Building from '@lucide/svelte/icons/landmark';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Pill from '#lib/components/app/pill.svelte';
@@ -62,13 +63,16 @@
 	]);
 </script>
 
+<!-- Below lg the card is one column: identity, keys box, then Edit / API keys (design order). -->
 <article
-	class="rounded-lg border bg-card"
+	class="rounded-lg border bg-card max-lg:flex max-lg:flex-col max-lg:gap-4 max-lg:p-card"
 	data-testid="product-row"
 	data-product-slug={product.slug}
 >
-	<div class="flex flex-col gap-4 p-card lg:flex-row lg:items-center lg:gap-6">
-		<div class="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center lg:gap-6">
+	<div class="flex flex-col gap-4 p-card max-lg:contents lg:flex-row lg:items-center lg:gap-6">
+		<div
+			class="flex min-w-0 flex-1 flex-col gap-3 max-lg:order-1 lg:flex-row lg:items-center lg:gap-6"
+		>
 			<div class="flex min-w-0 items-center gap-3 lg:w-56 lg:shrink-0">
 				<span
 					class="flex size-11 shrink-0 items-center justify-center rounded-md bg-secondary text-label text-foreground lg:hidden"
@@ -108,12 +112,24 @@
 				</Pill>
 			</div>
 		</div>
-		<div class="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
+		<div
+			class="flex flex-wrap items-center gap-2 max-lg:order-3 max-lg:grid max-lg:grid-cols-[1fr_1fr_auto] max-xs:grid-cols-[1fr_auto] lg:shrink-0 lg:flex-nowrap"
+		>
 			<Button variant="outline" onclick={onEdit} aria-label="Edit {product.name}">
 				<Pencil data-icon="inline-start" />
 				Edit
 			</Button>
-			<Button variant="outline" class="hidden md:inline-flex" onclick={onRotate}>
+			<Button
+				variant="outline"
+				class="max-xs:hidden lg:hidden"
+				onclick={onToggle}
+				aria-label="Toggle API keys of {product.name}"
+				aria-expanded={open}
+			>
+				<KeyRound data-icon="inline-start" />
+				API keys
+			</Button>
+			<Button variant="outline" class="hidden lg:inline-flex" onclick={onRotate}>
 				<RotateCw data-icon="inline-start" />
 				Rotate secret
 			</Button>
@@ -125,9 +141,7 @@
 		</div>
 	</div>
 
-	<div
-		class="border-t max-lg:mx-card max-lg:mb-card max-lg:rounded-md max-lg:border-t-0 max-lg:bg-secondary"
-	>
+	<div class="border-t max-lg:order-2 max-lg:rounded-md max-lg:border-t-0 max-lg:bg-secondary">
 		<button
 			type="button"
 			class="flex min-h-touch w-full items-center justify-between gap-3 px-card py-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-lg:px-3"

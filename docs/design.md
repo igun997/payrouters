@@ -211,7 +211,7 @@ Admin routes and API: see `docs/api.md`. Snap API: `GET/POST /snap/api/:token[/p
 ## 6. Decisions the design made that differ from the first web implementation
 
 - Products page shows keys inline per product (table inside the product card) instead of in a key dialog; Archive and Rotate secret sit in the row's overflow menu.
-- Login error copy: `That token was not accepted` (code currently says "That admin token was rejected by the server."). Webhook URL validation copy `Webhook URL must start with https://` is new (code only uses `type="url"`).
+- Login error copy `That token was not accepted` and the webhook URL validation copy `Webhook URL must start with https://` are both implemented. The login screen shows no token format, env variable or server hint, and a 429 shows a retry countdown. The Wonder login artboards still carry the older copy.
 - Provider forms: fee schedule editor rows are Method select + fixed Rp + percent + remove, with the default `*` row first; method labels in fee rows use short names (`BCA VA`). IDRX locks Mode to Live and warns that no sandbox exists.
 - Outbound deliveries: Retry is enabled for pending and failed rows, disabled for delivered (matches the code; the brief had said failed only).
 - Playground: advanced options (expires_in, return_url, IDRX wallet and chain) are a disclosure, stacked in one column; Create payment is at the end of the form card on desktop and a sticky bar on phones.
@@ -219,3 +219,40 @@ Admin routes and API: see `docs/api.md`. Snap API: `GET/POST /snap/api/:token[/p
 - Phone bottom bars (tab bar, sticky action bar) are drawn at the end of the artboard; implement them sticky to the viewport bottom with safe-area padding.
 - Dialog artboard heights are natural content heights, not fixed.
 - The `Method Error` Snap artboard dims non-active rows to 3.3:1 on purpose (disabled while a charge is in flight).
+
+## 7. Final decisions where the web app and the artboards differ
+
+Where the code and an artboard disagree, this section is the source of truth. The Wonder file was last edited before these decisions.
+
+### Shell and navigation
+
+- The top bar owns the page title. `PageHeader` publishes title, subtitle and actions to `shell` state and renders only an sr-only `h1[data-testid=page-title]`. Actions sit in the top bar from md and in the content below md.
+- Phones: pages reached from More (Products, Webhooks, Playground) show a back button that reopens More instead of the brand tile. `PageHeader` takes `phoneTitle` (Providers, Playground), `phoneHeading` and `phoneDescription` for the intro line that the top bar hides on phones. The document title keeps the full title.
+- Toasts are bottom centre on desktop and above the tab bar on phones. The artboard `Dashboard Toasts 1366` shows top right; the code does not follow it.
+- Dark mode is derived from the tokens, not designed.
+
+### Data and loading
+
+- Every fetch has a skeleton. Lists wait for the catalog (`meta`) before rendering rows, so provider and method slugs never flash. Filter selects, status chip counts, cash-in totals and the Playground form show placeholders while their data loads.
+- A request error shows `Could not load <subject>` with `The server returned <status>.` for unstructured HTTP failures; a structured API error shows its own message. Actions that fail keep the `Request failed` title.
+- The Overview shows `N paid of M closed` instead of a conversion delta, and hides the change line when current and previous periods are both zero. The API has no previous-period conversion.
+- Not supported by the API, so not built: Change method, Try another method after a terminal state, the IDRX destination-wallet card, a customer-chose-method activity entry, Copy and Roll key per key (full keys are shown once), per-product payment count and last delivery, and a docs link on the Payments empty state.
+
+### Per screen
+
+- Overview: Recent payments sit inside one card (`DataList` `bare`). The chart shows three date labels on phones and a dashed baseline with the first and last date when empty. The "Days follow Asia/Jakarta" note is hidden on phones. Stat figures stay 24/30; 2 columns at md and lg, 4 from xl.
+- Payments and Cash-ins: the pager is the footer of the list card, also when a filter matches nothing. The Created cell is two lines below lg, the row chevron shows from md, and phone cards have no provider mark and wrap their text. With no payments at all the filters and chips are hidden and the empty card fills the page height. Cash-in fee reads `− 1.050` in the table.
+- Payment detail: below xl one column in the order summary, ledger, activity, then instructions, Snap link, simulator and metadata. From xl two columns.
+- Webhooks: underline tabs from md, a segmented control with short labels (Inbound, Outbound) on phones; the accessible names stay `Inbound events` and `Outbound deliveries`. Inbound shows Verified, Payment and Error as separate columns from lg (merged under Outcome at md). Outbound shows Attempts and Next attempt as separate columns from lg. Phone filters are compact pills.
+- Products: below lg a card is one column in this order: avatar and name, default provider, webhook URL, created date, the API keys box, then Edit, API keys and the overflow menu. The API keys button toggles the same box. At 320 the keys are always listed and the API keys button and the disclosure toggle are gone; the intro line is a count (`3 products · 4 API keys in sandbox`). The empty state is a centred narrow checklist; the header keeps its New product button.
+- Providers: phone cards use a dark avatar, put the mode chip and the enabled switch on one row, box the credentials, and order the buttons Test then Edit (both outline).
+- Playground: the first product is preselected. Mode is read-only and follows the top bar switch (the 390 artboard shows a selector). Checkout uses two radio cards.
+- More: Data mode is a full-width rounded segmented control; Theme is a select row. It shows no token tail, host or version.
+- Date range: selected days form one continuous band with rounded ends; the popover scrolls inside short viewports.
+- IDRX has no sandbox, so its mode is locked to Live everywhere.
+
+### Implementation notes
+
+- shadcn files copied from the base-ui flavour used `data-checked`, `data-unchecked` and `data-active`; bits-ui sets `data-state`, so Switch and Tabs use `data-[state=…]`. Dialog, Sheet, Select and Tooltip still use `data-open` and `data-closed`, which bits-ui never sets (inferred from its attributes, not checked visually), so they probably have no open or close animation.
+- Rate limits answer `429 rate_limited` with `Retry-After`; see `docs/api.md`.
+- Pending Wonder edits (blocked by the workspace layer limit until 2026-12-02 or a plan upgrade): restore the Foundations Controls badge row and pills, the pills on Webhooks Outbound 390, Products 1366 and Products Empty 1366, and apply the login copy.
