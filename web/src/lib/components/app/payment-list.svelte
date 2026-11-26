@@ -19,7 +19,8 @@
 		providerLabels,
 		methodLabels,
 		empty,
-		testid = 'payments-list'
+		testid = 'payments-list',
+		bare = false
 	}: {
 		payments: AdminPayment[];
 		loading?: boolean;
@@ -28,6 +29,7 @@
 		methodLabels: Record<string, string>;
 		empty?: Snippet;
 		testid?: string;
+		bare?: boolean;
 	} = $props();
 
 	const columns = $derived<DataColumn[]>(
@@ -128,4 +130,5 @@
 	row={cells}
 	{card}
 	{empty}
+	{bare}
 />

@@ -175,7 +175,7 @@
 		</FormField>
 
 		<fieldset class="flex flex-col gap-2 md:col-span-2">
-			<legend class="text-label">Checkout</legend>
+			<legend class="mb-2 text-label">Checkout</legend>
 			<div class="grid gap-2 md:grid-cols-2 md:gap-x-4">
 				{#each checkoutChoices as choice (choice.value)}
 					<label

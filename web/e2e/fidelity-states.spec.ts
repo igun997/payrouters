@@ -79,7 +79,8 @@ test.describe('state screens', () => {
 
 		const banner = admin.getByTestId('banner');
 		await expect(banner).toHaveAttribute('role', 'alert');
-		await expect(banner).toContainText('Request failed');
+		await expect(banner).toContainText('Could not load payments');
+		await expect(banner).toContainText('The server returned 502.');
 		await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();
 		// Inside content: below the page heading, never over the sidebar or tab bar.
 		const title = await box(admin.getByTestId('page-title'));

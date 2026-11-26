@@ -5,7 +5,7 @@
 	import { userPrefersMode, setMode } from 'mode-watcher';
 	import BrandMark from './brand-mark.svelte';
 	import ModeToggle from './mode-toggle.svelte';
-	import * as ToggleGroup from '#lib/components/ui/toggle-group';
+	import SelectField from './select-field.svelte';
 	import { Button } from '#lib/components/ui/button';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import Package from '@lucide/svelte/icons/package';
@@ -114,21 +114,14 @@
 					</div>
 					<ModeToggle variant="segmented" />
 				</div>
-				<div class="flex flex-col gap-3 p-card">
+				<div class="flex items-center justify-between gap-3 p-card">
 					<p class="text-card-title">Theme</p>
-					<ToggleGroup.Root
-						type="single"
-						variant="outline"
-						size="sm"
-						value={userPrefersMode.current}
-						onValueChange={chooseTheme}
-						aria-label="Theme"
-						class="grid grid-cols-3"
-					>
-						{#each themes as item (item.value)}
-							<ToggleGroup.Item value={item.value}>{item.label}</ToggleGroup.Item>
-						{/each}
-					</ToggleGroup.Root>
+					<SelectField
+						bind:value={() => userPrefersMode.current, chooseTheme}
+						options={themes}
+						label="Theme"
+						class="w-32"
+					/>
 				</div>
 			</div>
 		</section>

@@ -116,7 +116,7 @@
 						{/each}
 					</div>
 				{:else if recent.error}
-					<ErrorAlert error={recent.error} onretry={loadRecent} />
+					<ErrorAlert error={recent.error} subject="recent payments" onretry={loadRecent} />
 				{:else if (recent.data?.data ?? []).length === 0}
 					<p class="py-6 text-center text-body text-muted-foreground" data-testid="recent-empty">
 						No {mode} payments yet.

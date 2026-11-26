@@ -153,18 +153,18 @@
 
 	<Tabs.Root bind:value={tab} class="flex flex-col gap-section">
 		<Tabs.List
-			class="grid h-auto min-h-touch w-full grid-cols-2 gap-1 rounded-lg bg-secondary p-1"
+			class="grid h-auto min-h-touch w-full grid-cols-2 gap-1 rounded-lg bg-secondary p-1 md:flex md:min-h-0 md:w-auto md:justify-start md:gap-6 md:rounded-none md:border-b md:bg-transparent md:p-0"
 			data-testid="webhook-tabs"
 		>
 			<Tabs.Trigger
 				value="inbound"
-				class="h-auto min-h-touch flex-none rounded-md px-3 text-label font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+				class="h-auto min-h-touch flex-none rounded-md px-3 text-label font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm md:-mb-px md:rounded-none md:border-b-2 md:border-transparent md:px-0 md:font-medium md:data-[state=active]:border-b-primary md:data-[state=active]:bg-transparent md:data-[state=active]:shadow-none"
 			>
 				Inbound events
 			</Tabs.Trigger>
 			<Tabs.Trigger
 				value="outbound"
-				class="h-auto min-h-touch flex-none rounded-md px-3 text-label font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+				class="h-auto min-h-touch flex-none rounded-md px-3 text-label font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm md:-mb-px md:rounded-none md:border-b-2 md:border-transparent md:px-0 md:font-medium md:data-[state=active]:border-b-primary md:data-[state=active]:bg-transparent md:data-[state=active]:shadow-none"
 			>
 				Outbound deliveries
 			</Tabs.Trigger>
@@ -193,7 +193,7 @@
 				</span>
 			</div>
 
-			<ErrorAlert error={inbox.error} onretry={loadInbox} />
+			<ErrorAlert error={inbox.error} subject="inbound webhooks" onretry={loadInbox} />
 
 			<div class="overflow-hidden rounded-lg border bg-card">
 				<div
@@ -203,7 +203,10 @@
 					<span>Received</span>
 					<span>Provider / account</span>
 					<span>Outcome</span>
-					<span>Payment and error</span>
+					<span class="hidden lg:block">Verified</span>
+					<span class="lg:hidden">Payment and error</span>
+					<span class="hidden lg:block">Payment</span>
+					<span class="hidden lg:block">Error</span>
 				</div>
 
 				{#if inbox.loading && inbox.items.length === 0}
@@ -292,7 +295,7 @@
 				</span>
 			</div>
 
-			<ErrorAlert error={outbox.error} onretry={loadOutbox} />
+			<ErrorAlert error={outbox.error} subject="outbound webhooks" onretry={loadOutbox} />
 
 			<div class="overflow-hidden rounded-lg border bg-card">
 				<div

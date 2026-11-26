@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	/** Desktop columns (md and up) shared by the inbound table header and its rows. */
 	export const EVENT_COLUMNS =
-		'md:grid-cols-[40px_150px_minmax(0,1fr)_140px_minmax(0,1.2fr)] xl:grid-cols-[40px_170px_minmax(0,1fr)_140px_minmax(0,1.4fr)]';
+		'md:grid-cols-[40px_150px_minmax(0,1fr)_140px_minmax(0,1.2fr)] lg:grid-cols-[40px_150px_minmax(0,1fr)_110px_130px_110px_minmax(0,1fr)] xl:grid-cols-[40px_170px_minmax(0,1fr)_120px_140px_120px_minmax(0,1.2fr)]';
 </script>
 
 <script lang="ts">
@@ -62,6 +62,18 @@
 			<JsonBlock value={event.body} />
 		</div>
 	</div>
+{/snippet}
+
+{#snippet verifiedMark()}
+	{#if event.verified}
+		<span class="inline-flex items-center gap-1 text-helper text-muted-foreground">
+			<ShieldCheck class="size-4" />Verified
+		</span>
+	{:else}
+		<span class="inline-flex items-center gap-1 text-helper text-failed-foreground">
+			<ShieldX class="size-4" />Not verified
+		</span>
+	{/if}
 {/snippet}
 
 {#snippet paymentLink()}
@@ -128,21 +140,19 @@
 
 		<div class="flex flex-col items-start gap-1.5">
 			<OutcomePill outcome={event.outcome} />
-			{#if event.verified}
-				<span class="inline-flex items-center gap-1 text-helper text-muted-foreground">
-					<ShieldCheck class="size-4" />Verified
-				</span>
-			{:else}
-				<span class="inline-flex items-center gap-1 text-helper text-failed-foreground">
-					<ShieldX class="size-4" />Not verified
-				</span>
-			{/if}
+			<span class="lg:hidden">{@render verifiedMark()}</span>
 		</div>
 
-		<div class="flex min-w-0 flex-col gap-1">
+		<span class="hidden lg:block">{@render verifiedMark()}</span>
+
+		<div class="flex min-w-0 flex-col gap-1 lg:contents">
 			{@render paymentLink()}
 			{#if event.error}
-				<span class="text-helper break-words text-failed-foreground">{event.error}</span>
+				<span class="text-helper break-words text-failed-foreground lg:self-center">
+					{event.error}
+				</span>
+			{:else}
+				<span class="hidden text-cell text-muted-foreground lg:block">—</span>
 			{/if}
 		</div>
 

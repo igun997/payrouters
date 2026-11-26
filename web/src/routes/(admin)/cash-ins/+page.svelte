@@ -227,7 +227,7 @@
 
 	<TotalsStrip items={totalItems} testid="cash-in-totals" />
 
-	<ErrorAlert error={list.error} />
+	<ErrorAlert error={list.error} subject="cash-ins" />
 
 	{#if phone.current}
 		<div class="flex items-center justify-between gap-3">

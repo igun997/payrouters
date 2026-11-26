@@ -250,7 +250,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<ErrorAlert error={accounts.error} onretry={refresh} />
+	<ErrorAlert error={accounts.error} subject="providers" onretry={refresh} />
 	{#if pageError}
 		<Banner tone="error">{pageError}</Banner>
 	{/if}

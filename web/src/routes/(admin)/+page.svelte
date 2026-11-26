@@ -127,6 +127,7 @@
 </div>
 
 <ErrorAlert
+	subject="the overview"
 	error={summary.error ?? series.error ?? byProvider.error ?? recent.error}
 	onretry={reload}
 />
@@ -249,8 +250,11 @@
 	</section>
 </div>
 
-<section class="flex flex-col gap-3" data-testid="recent-section">
-	<div class="flex items-center justify-between gap-3">
+<section
+	class="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
+	data-testid="recent-section"
+>
+	<div class="flex items-center justify-between gap-3 px-card">
 		<h2 class="text-card-title">Recent payments</h2>
 		<a
 			href={resolve('/(admin)/payments')}
@@ -263,14 +267,13 @@
 		payments={recent.data?.data ?? []}
 		loading={recent.loading && !recent.data}
 		variant="recent"
+		bare
 		providerLabels={providerName}
 		methodLabels={methodName}
 		testid="recent-payments-list"
 	>
 		{#snippet empty()}
-			<div
-				class="flex flex-col items-center gap-1 rounded-lg border border-border bg-card px-card py-10 text-center"
-			>
+			<div class="flex flex-col items-center gap-1 px-card py-10 text-center">
 				<p class="text-card-title">No payments in this range</p>
 				<p class="text-body text-muted-foreground">Payments in {rangeText} appear here.</p>
 			</div>

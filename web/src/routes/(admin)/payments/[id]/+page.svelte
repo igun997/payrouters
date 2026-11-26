@@ -104,7 +104,7 @@
 		</a>
 	{/if}
 
-	<ErrorAlert error={detail.error} onretry={reload} />
+	<ErrorAlert error={detail.error} subject="this payment" onretry={reload} />
 
 	{#if detail.loading && !detail.data}
 		<div class="flex flex-col gap-section">

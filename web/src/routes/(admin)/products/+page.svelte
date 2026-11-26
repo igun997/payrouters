@@ -365,7 +365,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<ErrorAlert error={products.error} onretry={refresh} />
+	<ErrorAlert error={products.error} subject="products" onretry={refresh} />
 
 	{#if products.loading && !products.data}
 		<div class="flex flex-col gap-section" aria-busy="true" aria-label="Loading products">

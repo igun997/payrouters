@@ -67,7 +67,7 @@
 	);
 </script>
 
-{#snippet segmented(testid: string)}
+{#snippet segmented(testid: string, full: boolean)}
 	<ToggleGroup.Root
 		type="single"
 		variant="outline"
@@ -76,17 +76,23 @@
 		onValueChange={choose}
 		aria-label="Data mode"
 		data-testid={testid}
-		class="h-auto gap-1 rounded-full border-0 bg-secondary p-1 shadow-none"
+		class={cn('h-auto gap-1 rounded-full border-0 bg-secondary p-1 shadow-none', full && 'w-full')}
 	>
 		<ToggleGroup.Item
 			value="sandbox"
-			class="rounded-full border-0 px-3 text-label font-semibold text-muted-foreground shadow-none data-[state=on]:bg-card! data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+			class={cn(
+				'rounded-full! border-0 px-3 text-label font-semibold text-muted-foreground shadow-none data-[state=on]:bg-card! data-[state=on]:text-foreground data-[state=on]:shadow-sm',
+				full && 'min-h-touch flex-1'
+			)}
 		>
 			Sandbox
 		</ToggleGroup.Item>
 		<ToggleGroup.Item
 			value="live"
-			class="rounded-full border-0 px-3 text-label font-semibold text-muted-foreground shadow-none data-[state=on]:bg-card! data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+			class={cn(
+				'rounded-full! border-0 px-3 text-label font-semibold text-muted-foreground shadow-none data-[state=on]:bg-card! data-[state=on]:text-foreground data-[state=on]:shadow-sm',
+				full && 'min-h-touch flex-1'
+			)}
 		>
 			Live
 		</ToggleGroup.Item>
@@ -94,9 +100,9 @@
 {/snippet}
 
 {#if variant === 'segmented'}
-	{@render segmented('mode-toggle')}
+	{@render segmented('mode-toggle', true)}
 {:else}
-	<div class="hidden md:inline-flex">{@render segmented('mode-toggle')}</div>
+	<div class="hidden md:inline-flex">{@render segmented('mode-toggle', false)}</div>
 	<button
 		type="button"
 		class={cn(

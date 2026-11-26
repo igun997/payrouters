@@ -210,7 +210,7 @@
 		<PaymentStatusChips {counts} value={status} onchange={(next: string) => (status = next)} />
 	</div>
 
-	<ErrorAlert error={list.error} onretry={reload} />
+	<ErrorAlert error={list.error} subject="payments" onretry={reload} />
 
 	{#if !hasFilters && !list.loading && rows.length === 0 && !list.error}
 		<EmptyState

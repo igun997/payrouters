@@ -6,7 +6,7 @@
 	import DataList, { type DataColumn } from './data-list.svelte';
 	import * as Table from '#lib/components/ui/table';
 	import { listDateTime } from '#lib/admin-view';
-	import { formatIdr } from '#lib/format';
+	import { formatIdr, formatInt } from '#lib/format';
 
 	let {
 		rows,
@@ -64,7 +64,7 @@
 		{formatIdr(row.gross_amount)}
 	</Table.Cell>
 	<Table.Cell class="tabular text-right whitespace-nowrap text-muted-foreground">
-		−{formatIdr(row.fee_amount)}
+		− {formatInt(row.fee_amount)}
 	</Table.Cell>
 	<Table.Cell class="tabular text-right font-semibold whitespace-nowrap">
 		{formatIdr(row.net_amount)}
