@@ -71,6 +71,7 @@
 	<PageHeader
 		title={mode === 'sandbox' ? 'Sandbox playground' : 'Live playground'}
 		phoneTitle="Playground"
+		phoneDescription="Create a payment through the admin API. No product key needed."
 		description={mode === 'sandbox'
 			? 'Create a payment against your sandbox accounts and open its checkout.'
 			: 'Create a payment against your live accounts. These are real payments.'}

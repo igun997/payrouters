@@ -19,18 +19,22 @@
 	const pillTone = { done: 'success', next: 'sandbox', todo: 'neutral' } as const;
 </script>
 
-<section class="flex flex-col rounded-lg border bg-card" data-testid="onboarding-checklist">
+<section
+	class="mx-auto flex w-full max-w-xl flex-col rounded-lg border bg-card md:mt-8"
+	data-testid="onboarding-checklist"
+>
 	<header class="flex flex-wrap items-start justify-between gap-3 border-b px-card py-4">
 		<div class="flex min-w-0 flex-col gap-1">
 			<h2 class="text-card-title text-foreground">{title}</h2>
 			<p class="text-helper text-muted-foreground">{description}</p>
 		</div>
-		<span class="tabular shrink-0 text-helper text-muted-foreground">
+		<span class="tabular shrink-0 text-helper text-muted-foreground max-sm:hidden">
 			{done} of {steps.length} done
 		</span>
 	</header>
 	<ol class="flex flex-col">
 		{#each steps as step, i (step.title)}
+			{@const Icon = step.icon}
 			<li
 				class={cn(
 					'flex flex-col gap-3 px-card py-4 sm:flex-row sm:items-center sm:justify-between',
@@ -38,7 +42,7 @@
 				)}
 				data-status={step.status}
 			>
-				<div class="flex min-w-0 items-start gap-3">
+				<div class="flex min-w-0 flex-1 items-start gap-3">
 					{#if step.status === 'done'}
 						<CircleCheck class="mt-0.5 size-5 shrink-0 text-primary" />
 					{:else if step.status === 'next'}
@@ -46,24 +50,35 @@
 					{:else}
 						<Circle class="mt-0.5 size-5 shrink-0 text-subtle-foreground" />
 					{/if}
-					<div class="flex min-w-0 flex-col gap-1">
-						<div class="flex flex-wrap items-center gap-2">
-							<span class="text-helper text-muted-foreground">Step {i + 1}</span>
+					<div class="flex min-w-0 flex-1 flex-col gap-1">
+						<!-- Phones: title with its status pill. From sm: step label above the title. -->
+						<div class="flex items-center justify-between gap-2 sm:hidden">
+							<span class="text-label text-foreground">{step.title}</span>
 							<Pill tone={pillTone[step.status]}>{pillLabel[step.status]}</Pill>
 						</div>
-						<span class="text-card-title text-foreground">{step.title}</span>
-						<span class="text-body text-muted-foreground">{step.helper}</span>
+						<div class="flex items-center gap-2 max-sm:hidden">
+							<span class="text-helper text-muted-foreground">Step {i + 1}</span>
+							{#if step.status !== 'done'}
+								<Pill tone={pillTone[step.status]}>{pillLabel[step.status]}</Pill>
+							{/if}
+						</div>
+						<span class="text-label text-foreground max-sm:hidden">{step.title}</span>
+						<span class="text-helper text-muted-foreground">{step.helper}</span>
 					</div>
 				</div>
 				{#if step.href}
-					<Button variant="outline" class="shrink-0" href={step.href}>{step.actionLabel}</Button>
+					<Button variant="outline" class="shrink-0 max-sm:w-full" href={step.href}>
+						{#if Icon}<Icon class="size-4" />{/if}
+						{step.actionLabel}
+					</Button>
 				{:else}
 					<Button
-						variant={step.status === 'next' ? 'default' : 'outline'}
-						class="shrink-0"
+						variant={step.status === 'next' ? 'default' : 'secondary'}
+						class="shrink-0 max-sm:w-full"
 						disabled={step.status !== 'next'}
 						onclick={step.onAction}
 					>
+						{#if Icon}<Icon class="size-4" />{/if}
 						{step.actionLabel}
 					</Button>
 				{/if}

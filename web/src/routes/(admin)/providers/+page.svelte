@@ -237,6 +237,8 @@
 	<PageHeader
 		title="Provider accounts"
 		phoneTitle="Providers"
+		phoneHeading="Provider accounts"
+		phoneDescription="One account per provider and mode."
 		description="One account per provider and mode. Secrets are write-only and always shown masked."
 	>
 		{#snippet actions()}

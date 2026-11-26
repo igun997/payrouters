@@ -82,7 +82,8 @@
 
 	/** Relative change vs the previous equal-length range; null when not comparable. */
 	function change(now: number, before: number | undefined): number | null {
-		return before === undefined ? null : percentChange(now, before);
+		if (before === undefined || (now === 0 && before === 0)) return null;
+		return percentChange(now, before);
 	}
 
 	const chartData = $derived(

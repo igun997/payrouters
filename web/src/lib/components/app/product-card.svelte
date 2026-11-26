@@ -15,6 +15,8 @@
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Pill from '#lib/components/app/pill.svelte';
 	import { cn } from '#lib/utils';
+	import { keyDate } from '#lib/key-format';
+	import { IsMobile } from '#lib/hooks/is-mobile.svelte';
 
 	let {
 		product,
@@ -39,6 +41,17 @@
 		onRevoke: (key: ApiKey) => void;
 	} = $props();
 
+	// At 320 the keys are always listed (design); from 360 up they sit behind the disclosure.
+	const tiny = new IsMobile(360);
+	const open = $derived(expanded || tiny.current);
+	const initials = $derived(
+		product.name
+			.split(/\s+/)
+			.map((w) => w[0])
+			.join('')
+			.slice(0, 2)
+			.toUpperCase()
+	);
 	const activeKeys = $derived(product.api_keys.filter((k) => !k.revoked_at).length);
 	const keysId = $derived(`product-${product.id}-keys`);
 
@@ -56,9 +69,21 @@
 >
 	<div class="flex flex-col gap-4 p-card lg:flex-row lg:items-center lg:gap-6">
 		<div class="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center lg:gap-6">
-			<div class="flex min-w-0 flex-col gap-0.5 lg:w-56 lg:shrink-0">
-				<h2 class="truncate text-card-title text-foreground">{product.name}</h2>
-				<span class="truncate font-mono text-helper text-muted-foreground">{product.slug}</span>
+			<div class="flex min-w-0 items-center gap-3 lg:w-56 lg:shrink-0">
+				<span
+					class="flex size-11 shrink-0 items-center justify-center rounded-md bg-secondary text-label text-foreground lg:hidden"
+					aria-hidden="true"
+				>
+					{initials}
+				</span>
+				<div class="flex min-w-0 flex-col gap-0.5">
+					<h2 class="truncate text-card-title text-foreground">{product.name}</h2>
+					<span class="truncate font-mono text-helper text-muted-foreground">{product.slug}</span>
+				</div>
+			</div>
+			<div class="flex items-center justify-between gap-3 text-body lg:hidden">
+				<span class="text-muted-foreground">Default provider</span>
+				<span class="font-semibold">{providerLabel}</span>
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-1">
 				<span class="text-helper text-muted-foreground">Webhook URL</span>
@@ -67,10 +92,16 @@
 						{product.webhook_url}
 					</span>
 				{:else}
-					<span class="text-body text-muted-foreground">No webhook</span>
+					<span class="text-mono-id font-mono text-muted-foreground">
+						Not set. Deliveries are skipped.
+					</span>
 				{/if}
 			</div>
-			<div class="lg:shrink-0">
+			<div class="flex items-center justify-between gap-3 text-body lg:hidden">
+				<span class="text-muted-foreground">Created</span>
+				<span class="tabular font-semibold">{keyDate(product.created_at)}</span>
+			</div>
+			<div class="hidden lg:block lg:shrink-0">
 				<Pill tone="neutral">
 					<Building class="size-3.5" />
 					{providerLabel}
@@ -94,22 +125,24 @@
 		</div>
 	</div>
 
-	<div class="border-t">
+	<div
+		class="border-t max-lg:mx-card max-lg:mb-card max-lg:rounded-md max-lg:border-t-0 max-lg:bg-secondary"
+	>
 		<button
 			type="button"
-			class="flex min-h-touch w-full items-center justify-between gap-3 px-card py-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-			aria-expanded={expanded}
+			class="flex min-h-touch w-full items-center justify-between gap-3 px-card py-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-lg:px-3"
+			aria-expanded={open}
 			aria-controls={keysId}
 			onclick={onToggle}
 		>
 			<span class="text-label text-foreground">API keys</span>
 			<span class="flex items-center gap-2 text-helper text-muted-foreground">
 				{activeKeys} of {product.api_keys.length} active
-				<ChevronDown class={cn('size-4 transition-transform', expanded && 'rotate-180')} />
+				<ChevronDown class={cn('size-4 transition-transform', open && 'rotate-180')} />
 			</span>
 		</button>
-		{#if expanded}
-			<div id={keysId} class="px-card pb-card">
+		{#if open}
+			<div id={keysId} class="px-card pb-card max-lg:bg-card max-lg:px-3 max-lg:pb-3">
 				<ApiKeyTable keys={product.api_keys} onCreate={onCreateKey} {onRevoke} />
 			</div>
 		{/if}

@@ -49,7 +49,9 @@
 		onsubmit: (draft: PaymentDraft) => void;
 	} = $props();
 
-	let draft = $state<PaymentDraft>(blankDraft());
+	// The first product is preselected, as in the design; the form mounts once products are loaded.
+	// svelte-ignore state_referenced_locally
+	let draft = $state<PaymentDraft>({ ...blankDraft(), productId: products[0]?.id ?? '' });
 	let touched = $state<Partial<Record<DraftField, boolean>>>({});
 	let attempted = $state(false);
 	let advancedOpen = $state(false);

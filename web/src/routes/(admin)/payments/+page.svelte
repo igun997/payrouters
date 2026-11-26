@@ -154,6 +154,11 @@
 		q = '';
 	}
 
+	/** No payments at all in this mode: the filters have nothing to filter. */
+	/** The list sits in one card with its pager, also when a filter matches nothing. */
+	const framed = $derived(rows.length > 0 || hasFilters);
+	const pristine = $derived(!hasFilters && !list.loading && rows.length === 0 && !list.error);
+
 	function reload() {
 		const current = listQuery;
 		void list.load(() => adminApi.listPayments(current));
@@ -163,70 +168,72 @@
 <PageHeader title="Payments" description="Every payment across products, filtered and paged." />
 
 <div class="flex flex-col gap-section" data-testid="page-payments">
-	<div class="flex flex-col-reverse gap-3 min-[360px]:flex-col md:flex-col-reverse">
-		<div class="flex flex-col gap-2 xl:flex-row xl:items-center">
-			<div class="flex items-center gap-2 xl:min-w-0 xl:flex-1">
-				<form class="relative min-w-0 flex-1" role="search" onsubmit={(e) => e.preventDefault()}>
-					<Search
-						class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
-					/>
-					<Input
-						class="pl-10"
-						placeholder={phone.current
-							? 'Search order or ref'
-							: 'Search order ID, payment ID or provider ref'}
-						aria-label="Search payments"
-						bind:value={searchInput}
-						data-testid="payments-search"
-					/>
-				</form>
-				<Button
-					variant="outline"
-					size="icon"
-					class="md:hidden"
-					aria-label="Open filters"
-					onclick={() => (sheetOpen = true)}
-				>
-					<SlidersHorizontal />
-				</Button>
-			</div>
-
-			<div class="hidden flex-wrap items-center gap-2 md:flex">
-				<SelectField
-					bind:value={provider}
-					options={providerOptions}
-					label="Provider"
-					class="w-44"
-					loading={meta.loading && !meta.data}
-				/>
-				<SelectField
-					bind:value={productId}
-					options={productOptions}
-					label="Product"
-					class="w-44"
-					loading={products.loading && !products.data}
-				/>
-				<DateRangeFilter />
-				{#if hasFilters}
-					<Button variant="ghost" size="sm" onclick={clearFilters}>
-						<FunnelX data-icon="inline-start" />
-						Clear filters
+	{#if !pristine}
+		<div class="flex flex-col-reverse gap-3 min-[360px]:flex-col md:flex-col-reverse">
+			<div class="flex flex-col gap-2 xl:flex-row xl:items-center">
+				<div class="flex items-center gap-2 xl:min-w-0 xl:flex-1">
+					<form class="relative min-w-0 flex-1" role="search" onsubmit={(e) => e.preventDefault()}>
+						<Search
+							class="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
+						/>
+						<Input
+							class="pl-10"
+							placeholder={phone.current
+								? 'Search order or ref'
+								: 'Search order ID, payment ID or provider ref'}
+							aria-label="Search payments"
+							bind:value={searchInput}
+							data-testid="payments-search"
+						/>
+					</form>
+					<Button
+						variant="outline"
+						size="icon"
+						class="md:hidden"
+						aria-label="Open filters"
+						onclick={() => (sheetOpen = true)}
+					>
+						<SlidersHorizontal />
 					</Button>
-				{/if}
+				</div>
+
+				<div class="hidden flex-wrap items-center gap-2 md:flex">
+					<SelectField
+						bind:value={provider}
+						options={providerOptions}
+						label="Provider"
+						class="w-44"
+						loading={meta.loading && !meta.data}
+					/>
+					<SelectField
+						bind:value={productId}
+						options={productOptions}
+						label="Product"
+						class="w-44"
+						loading={products.loading && !products.data}
+					/>
+					<DateRangeFilter />
+					{#if hasFilters}
+						<Button variant="ghost" size="sm" onclick={clearFilters}>
+							<FunnelX data-icon="inline-start" />
+							Clear filters
+						</Button>
+					{/if}
+				</div>
 			</div>
+			<PaymentStatusChips
+				{counts}
+				loading={summary.loading && !summary.data}
+				value={status}
+				onchange={(next: string) => (status = next)}
+			/>
 		</div>
-		<PaymentStatusChips
-			{counts}
-			loading={summary.loading && !summary.data}
-			value={status}
-			onchange={(next: string) => (status = next)}
-		/>
-	</div>
+	{/if}
 
 	<ErrorAlert error={list.error} subject="payments" onretry={reload} />
 
-	<div class={cn(rows.length > 0 && 'overflow-hidden rounded-lg border border-border bg-card')}>
-		{#if !hasFilters && !list.loading && rows.length === 0 && !list.error}
+	<div class={cn(framed && 'overflow-hidden rounded-lg border border-border bg-card')}>
+		{#if pristine}
 			<EmptyState
 				icon={CreditCard}
 				title={`No payments in ${prefs.mode} yet`}
@@ -234,7 +241,7 @@
 					? 'Create a test payment in the Playground and it shows up here within seconds.'
 					: 'Payments from live products appear here once they are created.'}
 				dashed
-				class="min-h-96"
+				class="min-h-[calc(100svh-13rem)] bg-card"
 			>
 				{#snippet actions()}
 					<Button href={resolve('/(admin)/playground')}>
@@ -248,7 +255,7 @@
 				payments={rows}
 				loading={(list.loading && !list.data) || (meta.loading && !meta.data)}
 				variant="full"
-				bare={rows.length > 0}
+				bare={framed}
 				providerLabels={providerName}
 				methodLabels={methodName}
 				testid="payments-list"
@@ -289,7 +296,7 @@
 			</PaymentList>
 		{/if}
 
-		{#if rows.length > 0 || cursors.length > 0}
+		{#if framed || cursors.length > 0}
 			<CursorPager
 				start={pageStart}
 				end={pageEnd}
@@ -299,7 +306,7 @@
 				busy={list.loading}
 				onprevious={prevPage}
 				onnext={nextPage}
-				framed={rows.length > 0}
+				{framed}
 			/>
 		{/if}
 	</div>

@@ -25,7 +25,7 @@
 
 <div class="flex flex-col gap-3">
 	<div class="flex flex-wrap items-center justify-between gap-3">
-		<p class="min-w-0 flex-1 text-helper text-muted-foreground">
+		<p class="min-w-0 flex-1 text-helper text-muted-foreground max-sm:basis-full">
 			A sandbox key reaches only sandbox provider accounts; a live key reaches live ones. Full keys
 			are shown once.
 		</p>

@@ -4,6 +4,7 @@
 	import { adminApi } from '#lib/api/admin';
 	import { errorMessage } from '#lib/api/client';
 	import type { ApiKey, ApiKeyCreated, Meta, Product, ProviderAccount } from '#lib/api/types';
+	import { prefs } from '#lib/state/prefs.svelte';
 	import { Resource } from '#lib/state/resource.svelte';
 	import { loadMeta, providerLabels } from '#lib/state/catalog.svelte';
 	import { IsMobile } from '#lib/hooks/is-mobile.svelte';
@@ -26,6 +27,8 @@
 	import DetailBox from '#lib/components/app/detail-box.svelte';
 	import FormField from '#lib/components/app/form-field.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Landmark from '@lucide/svelte/icons/landmark';
+	import KeyRound from '@lucide/svelte/icons/key-round';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Archive from '@lucide/svelte/icons/archive';
 
@@ -52,6 +55,14 @@
 		...Object.entries(labels).map(([value, label]) => ({ value, label }))
 	]);
 	const phone = new IsMobile(768);
+	const tiny = new IsMobile(360);
+	const intro =
+		'Each product gets its own API keys and webhook secret. Archived products are hidden.';
+	const counts = $derived.by(() => {
+		const all = products.data?.data ?? [];
+		const keys = all.reduce((n, p) => n + p.api_keys.filter((k) => !k.revoked_at).length, 0);
+		return `${all.length} ${all.length === 1 ? 'product' : 'products'} · ${keys} API ${keys === 1 ? 'key' : 'keys'} in ${prefs.mode}`;
+	});
 
 	$effect(() => {
 		void meta.load(loadMeta);
@@ -327,12 +338,13 @@
 	const providerCount = $derived(providers.data?.data.length ?? 0);
 	const checklist = $derived<ChecklistStep[]>([
 		{
-			title: providerCount > 0 ? 'Provider account connected' : 'Add a provider account',
+			title: 'Add a provider account',
 			helper:
 				providerCount > 0
 					? `${providerCount} provider ${providerCount === 1 ? 'account is' : 'accounts are'} set up. Server keys are saved and masked.`
 					: 'Connect a sandbox provider account first so the test flow can run.',
 			status: providerCount > 0 ? 'done' : 'next',
+			icon: Landmark,
 			actionLabel: providerCount > 0 ? 'View account' : 'Add account',
 			href: resolve('/(admin)/providers')
 		},
@@ -340,6 +352,7 @@
 			title: 'Create a product',
 			helper: 'Products group payments, API keys and the webhook URL. Start with your first app.',
 			status: providerCount > 0 ? 'next' : 'todo',
+			icon: Plus,
 			actionLabel: 'Create product',
 			onAction: openCreate
 		},
@@ -347,20 +360,19 @@
 			title: 'Create an API key',
 			helper: 'Keys belong to a product, so create one after step 2.',
 			status: 'todo',
+			icon: KeyRound,
 			actionLabel: 'Create API key'
 		}
 	]);
 </script>
 
 <div data-testid="page-products" class="flex flex-col gap-section">
-	<PageHeader
-		title="Products"
-		description="Each product gets its own API keys and webhook secret. Archived products are hidden."
-	>
+	<PageHeader title="Products" description={intro} phoneDescription={tiny.current ? counts : intro}>
 		{#snippet actions()}
-			<Button onclick={openCreate} data-testid="new-product-button">
+			<Button onclick={openCreate} data-testid="new-product-button" aria-label="New product">
 				<Plus data-icon="inline-start" />
-				New product
+				<span class="max-md:hidden">New product</span>
+				<span class="md:hidden" aria-hidden="true">New</span>
 			</Button>
 		{/snippet}
 	</PageHeader>

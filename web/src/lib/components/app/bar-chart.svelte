@@ -91,10 +91,16 @@
 		</div>
 	</div>
 {:else}
-	<p
-		class="flex h-56 items-center justify-center text-body text-muted-foreground"
-		data-testid={`${testid}-empty`}
-	>
-		{empty}
-	</p>
+	<div class="flex flex-col gap-2" data-testid={`${testid}-empty`}>
+		<p class="flex h-56 items-center justify-center text-body text-muted-foreground">
+			{empty}
+		</p>
+		{#if labels.length > 1}
+			<div class="border-t border-dashed border-border" aria-hidden="true"></div>
+			<div class="tabular flex justify-between text-helper text-muted-foreground">
+				<span>{labels[0].label}</span>
+				<span>{labels[labels.length - 1].label}</span>
+			</div>
+		{/if}
+	</div>
 {/if}
