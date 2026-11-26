@@ -236,6 +236,7 @@
 <div data-testid="page-providers" class="flex flex-col gap-section">
 	<PageHeader
 		title="Provider accounts"
+		phoneTitle="Providers"
 		description="One account per provider and mode. Secrets are write-only and always shown masked."
 	>
 		{#snippet actions()}
@@ -255,7 +256,7 @@
 		<Banner tone="error">{pageError}</Banner>
 	{/if}
 
-	{#if accounts.loading && !accounts.data}
+	{#if (accounts.loading && !accounts.data) || (meta.loading && !meta.data)}
 		<div
 			class="grid grid-cols-1 gap-section md:grid-cols-2"
 			aria-busy="true"

@@ -39,8 +39,8 @@
 </script>
 
 <fieldset class="flex flex-col gap-3">
-	<legend class="text-label text-foreground">Fee schedule</legend>
-	<p class="-mt-2 text-helper text-muted-foreground">
+	<legend class="mb-1 text-label text-foreground">Fee schedule</legend>
+	<p class="text-helper text-muted-foreground">
 		Used when the provider does not report a fee. Fixed is in rupiah; percent is e.g. 0.7. The * row
 		is the default for methods without their own row.
 	</p>

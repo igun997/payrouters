@@ -106,7 +106,7 @@
 
 	<ErrorAlert error={detail.error} subject="this payment" onretry={reload} />
 
-	{#if detail.loading && !detail.data}
+	{#if (detail.loading && !detail.data) || (meta.loading && !meta.data)}
 		<div class="flex flex-col gap-section">
 			<Skeleton class="h-10 w-72" />
 			<Skeleton class="h-48 w-full" />
@@ -274,28 +274,37 @@
 				</div>
 			</div>
 
+			<!-- Below xl one column: summary, ledger, activity, then the rest. From xl two columns. -->
 			<div class="grid gap-section xl:grid-cols-[minmax(0,1fr)_380px]">
-				<div class="flex min-w-0 flex-col gap-section">
-					<PaymentSummary
-						payment={p}
-						providerLabel={providerName[p.provider] ?? p.provider}
-						methodLabel={p.method ? (methodName[p.method] ?? p.method) : null}
-					/>
-					<ActivityTimeline
-						payment={p}
-						events={d.events}
-						deliveries={d.deliveries}
-						cashIn={d.cash_in}
-						{busy}
-						onretry={retry}
-					/>
+				<div class="flex min-w-0 flex-col gap-section max-xl:contents">
+					<div class="max-xl:order-1">
+						<PaymentSummary
+							payment={p}
+							providerLabel={providerName[p.provider] ?? p.provider}
+							methodLabel={p.method ? (methodName[p.method] ?? p.method) : null}
+						/>
+					</div>
+					<div class="max-xl:order-3">
+						<ActivityTimeline
+							payment={p}
+							events={d.events}
+							deliveries={d.deliveries}
+							cashIn={d.cash_in}
+							{busy}
+							onretry={retry}
+						/>
+					</div>
 				</div>
 
-				<div class="flex min-w-0 flex-col gap-section">
-					<CashInLedger payment={p} cashIn={d.cash_in} />
-					{@render instructions(p)}
-					{@render simulator(p)}
-					{@render metadata(p)}
+				<div class="flex min-w-0 flex-col gap-section max-xl:contents">
+					<div class="max-xl:order-2">
+						<CashInLedger payment={p} cashIn={d.cash_in} />
+					</div>
+					<div class="flex min-w-0 flex-col gap-section max-xl:order-4">
+						{@render instructions(p)}
+						{@render simulator(p)}
+						{@render metadata(p)}
+					</div>
 				</div>
 			</div>
 		{/if}

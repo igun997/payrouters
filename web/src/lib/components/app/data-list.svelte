@@ -50,7 +50,7 @@
 			: 'overflow-hidden rounded-lg border border-border bg-card'
 	);
 	const phone = new IsMobile(768);
-	const skeleton = $derived(loading && rows.length === 0);
+	const skeleton = $derived(loading);
 	const placeholders = $derived(Array.from({ length: skeletonRows }, (_, i) => i));
 </script>
 

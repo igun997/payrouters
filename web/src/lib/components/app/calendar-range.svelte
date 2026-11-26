@@ -45,10 +45,22 @@
 		return out;
 	}
 
+	/** Continuous band behind in-range days; it rounds at the endpoints, week edges and month edges. */
+	function bandClass(days: (string | null)[], index: number): string {
+		const day = days[index];
+		if (!day || from === to || day < from || day > to) return '';
+		const startsRow = index % 7 === 0 || !days[index - 1];
+		const endsRow = index % 7 === 6 || !days[index + 1];
+		return cn(
+			'bg-secondary',
+			(day === from || startsRow) && 'rounded-l-full',
+			(day === to || endsRow) && 'rounded-r-full'
+		);
+	}
+
 	function dayClass(day: string): string {
 		if (day === from || day === to) return 'bg-primary text-primary-foreground font-semibold';
-		if (day > from && day < to) return 'bg-secondary text-foreground';
-		return 'text-foreground hover:bg-secondary';
+		return 'text-foreground hover:bg-muted';
 	}
 </script>
 
@@ -82,21 +94,24 @@
 				</div>
 				<div class="grid grid-cols-7 gap-y-1">
 					{#each cells(ym) as day, index (index)}
+						{@const days = cells(ym)}
 						{#if day}
-							<button
-								type="button"
-								class={cn(
-									'mx-auto flex h-11 w-full max-w-11 items-center justify-center rounded-full text-cell tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-									dayClass(day)
-								)}
-								disabled={day > max}
-								aria-label={fullDay(day)}
-								aria-pressed={day === from || day === to}
-								data-day={day}
-								onclick={() => onpick(day)}
-							>
-								{Number(day.slice(8))}
-							</button>
+							<div class={cn('flex h-11 items-center justify-center', bandClass(days, index))}>
+								<button
+									type="button"
+									class={cn(
+										'flex size-11 items-center justify-center rounded-full text-cell tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+										dayClass(day)
+									)}
+									disabled={day > max}
+									aria-label={fullDay(day)}
+									aria-pressed={day === from || day === to}
+									data-day={day}
+									onclick={() => onpick(day)}
+								>
+									{Number(day.slice(8))}
+								</button>
+							</div>
 						{:else}
 							<span></span>
 						{/if}

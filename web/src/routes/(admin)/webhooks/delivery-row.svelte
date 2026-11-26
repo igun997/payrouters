@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	/** Desktop columns (md and up) shared by the outbound table header and its rows. */
 	export const DELIVERY_COLUMNS =
-		'md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.4fr)_auto]';
+		'md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.4fr)_88px] lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_110px_80px_minmax(0,1.2fr)_minmax(0,1.1fr)_88px]';
 
 	/** Attempts the server makes before a delivery is marked failed (the retry schedule has 8 steps). */
 	export const MAX_ATTEMPTS = 8;
@@ -194,10 +194,12 @@
 			<span data-testid="delivery-status" data-status={delivery.status}>
 				<Pill tone={status.tone}>{status.label}</Pill>
 			</span>
-			<span class="tabular text-helper whitespace-nowrap text-muted-foreground">
+			<span class="tabular text-helper whitespace-nowrap text-muted-foreground lg:hidden">
 				{delivery.attempts}/{MAX_ATTEMPTS} attempts
 			</span>
 		</div>
+
+		<span class="tabular hidden text-cell lg:block">{delivery.attempts}/{MAX_ATTEMPTS}</span>
 
 		<div class="flex min-w-0 flex-col gap-0.5 text-cell">
 			<span class="tabular">
@@ -208,8 +210,12 @@
 					{delivery.last_error}
 				</span>
 			{/if}
-			<span class="text-helper text-muted-foreground">{responseNote}</span>
+			<span class="text-helper text-muted-foreground lg:hidden">{responseNote}</span>
 		</div>
+
+		<span class="tabular hidden text-helper text-muted-foreground lg:block">
+			{delivered ? `Delivered ${formatDateTime(delivery.delivered_at)}` : nextValue}
+		</span>
 
 		<div class="flex items-center gap-2 md:justify-end">
 			<Button

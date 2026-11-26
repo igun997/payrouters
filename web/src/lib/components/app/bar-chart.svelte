@@ -2,6 +2,7 @@
 	// Daily bar chart in HTML and CSS, so axis labels keep their size at every width. Heights scale
 	// to a nice-number axis; the peak day is the dark bar. Each bar has a title tooltip.
 	import { compactRupiah } from '#lib/admin-view';
+	import { IsMobile } from '#lib/hooks/is-mobile.svelte';
 
 	export type BarDatum = { label: string; value: number; title: string };
 
@@ -34,7 +35,9 @@
 
 	const ticks = $derived(niceTicks(max));
 	const axisTop = $derived(ticks.at(-1) ?? 0);
-	const labelCount = $derived(Math.min(5, data.length));
+	// Three date labels on phones, where five would run into each other.
+	const phone = new IsMobile(768);
+	const labelCount = $derived(Math.min(phone.current ? 3 : 5, data.length));
 	const labels = $derived(
 		labelCount === 0
 			? []
@@ -51,7 +54,7 @@
 </script>
 
 {#if hasData}
-	<div class="flex flex-col gap-2 pt-3" data-testid={testid}>
+	<div class="flex flex-col gap-2 pt-5" data-testid={testid}>
 		<div class="relative h-56 pl-14">
 			{#each ticks as tick (tick)}
 				<span

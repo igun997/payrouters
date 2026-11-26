@@ -11,6 +11,8 @@ export type DateRange = { preset: RangePreset; from: string; to: string };
  */
 class Shell {
 	title = $state('');
+	/** Shorter top-bar title for phones; the document title keeps the full one. */
+	phoneTitle = $state<string | null>(null);
 	subtitle = $state<string | null>(null);
 	/** Show the date range control in the top bar (desktop). */
 	rangeControl = $state(false);
@@ -19,11 +21,13 @@ class Shell {
 
 	set(next: {
 		title: string;
+		phoneTitle?: string | null;
 		subtitle?: string | null;
 		rangeControl?: boolean;
 		actions?: Snippet | null;
 	}): void {
 		this.title = next.title;
+		this.phoneTitle = next.phoneTitle ?? null;
 		this.subtitle = next.subtitle ?? null;
 		this.rangeControl = next.rangeControl ?? false;
 		this.actions = next.actions ?? null;
@@ -31,6 +35,7 @@ class Shell {
 
 	clear(): void {
 		this.title = '';
+		this.phoneTitle = null;
 		this.subtitle = null;
 		this.rangeControl = false;
 		this.actions = null;

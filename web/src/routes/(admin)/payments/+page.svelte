@@ -17,6 +17,7 @@
 	import PaymentFilterSheet from '#lib/components/app/payment-filter-sheet.svelte';
 	import DateRangeSheet from '#lib/components/app/date-range-sheet.svelte';
 	import CursorPager from '#lib/components/app/cursor-pager.svelte';
+	import { cn } from '#lib/utils';
 	import EmptyState from '#lib/components/app/empty-state.svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -196,8 +197,15 @@
 					options={providerOptions}
 					label="Provider"
 					class="w-44"
+					loading={meta.loading && !meta.data}
 				/>
-				<SelectField bind:value={productId} options={productOptions} label="Product" class="w-44" />
+				<SelectField
+					bind:value={productId}
+					options={productOptions}
+					label="Product"
+					class="w-44"
+					loading={products.loading && !products.data}
+				/>
 				<DateRangeFilter />
 				{#if hasFilters}
 					<Button variant="ghost" size="sm" onclick={clearFilters}>
@@ -207,85 +215,94 @@
 				{/if}
 			</div>
 		</div>
-		<PaymentStatusChips {counts} value={status} onchange={(next: string) => (status = next)} />
+		<PaymentStatusChips
+			{counts}
+			loading={summary.loading && !summary.data}
+			value={status}
+			onchange={(next: string) => (status = next)}
+		/>
 	</div>
 
 	<ErrorAlert error={list.error} subject="payments" onretry={reload} />
 
-	{#if !hasFilters && !list.loading && rows.length === 0 && !list.error}
-		<EmptyState
-			icon={CreditCard}
-			title={`No payments in ${prefs.mode} yet`}
-			description={prefs.mode === 'sandbox'
-				? 'Create a test payment in the Playground and it shows up here within seconds.'
-				: 'Payments from live products appear here once they are created.'}
-			dashed
-			class="min-h-96"
-		>
-			{#snippet actions()}
-				<Button href={resolve('/(admin)/playground')}>
-					<FlaskConical data-icon="inline-start" />
-					Open Playground
-				</Button>
-			{/snippet}
-		</EmptyState>
-	{:else}
-		<PaymentList
-			payments={rows}
-			loading={list.loading && !list.data}
-			variant="full"
-			providerLabels={providerName}
-			methodLabels={methodName}
-			testid="payments-list"
-		>
-			{#snippet empty()}
-				{#if hasFilters}
-					<EmptyState
-						icon={SearchX}
-						title="No payments match these filters"
-						description="Try another status, provider or date range."
-						dashed
-					>
-						{#snippet actions()}
-							<Button variant="outline" onclick={clearFilters}>
-								<FunnelX data-icon="inline-start" />
-								Clear filters
-							</Button>
-						{/snippet}
-					</EmptyState>
-				{:else}
-					<EmptyState
-						icon={CreditCard}
-						title={`No payments in ${prefs.mode} yet`}
-						description={prefs.mode === 'sandbox'
-							? 'Create a test payment in the Playground and it shows up here within seconds.'
-							: 'Payments from live products appear here once they are created.'}
-						dashed
-					>
-						{#snippet actions()}
-							<Button href={resolve('/(admin)/playground')}>
-								<FlaskConical data-icon="inline-start" />
-								Open Playground
-							</Button>
-						{/snippet}
-					</EmptyState>
-				{/if}
-			{/snippet}
-		</PaymentList>
-	{/if}
+	<div class={cn(rows.length > 0 && 'overflow-hidden rounded-lg border border-border bg-card')}>
+		{#if !hasFilters && !list.loading && rows.length === 0 && !list.error}
+			<EmptyState
+				icon={CreditCard}
+				title={`No payments in ${prefs.mode} yet`}
+				description={prefs.mode === 'sandbox'
+					? 'Create a test payment in the Playground and it shows up here within seconds.'
+					: 'Payments from live products appear here once they are created.'}
+				dashed
+				class="min-h-96"
+			>
+				{#snippet actions()}
+					<Button href={resolve('/(admin)/playground')}>
+						<FlaskConical data-icon="inline-start" />
+						Open Playground
+					</Button>
+				{/snippet}
+			</EmptyState>
+		{:else}
+			<PaymentList
+				payments={rows}
+				loading={(list.loading && !list.data) || (meta.loading && !meta.data)}
+				variant="full"
+				bare={rows.length > 0}
+				providerLabels={providerName}
+				methodLabels={methodName}
+				testid="payments-list"
+			>
+				{#snippet empty()}
+					{#if hasFilters}
+						<EmptyState
+							icon={SearchX}
+							title="No payments match these filters"
+							description="Try another status, provider or date range."
+							dashed
+						>
+							{#snippet actions()}
+								<Button variant="outline" onclick={clearFilters}>
+									<FunnelX data-icon="inline-start" />
+									Clear filters
+								</Button>
+							{/snippet}
+						</EmptyState>
+					{:else}
+						<EmptyState
+							icon={CreditCard}
+							title={`No payments in ${prefs.mode} yet`}
+							description={prefs.mode === 'sandbox'
+								? 'Create a test payment in the Playground and it shows up here within seconds.'
+								: 'Payments from live products appear here once they are created.'}
+							dashed
+						>
+							{#snippet actions()}
+								<Button href={resolve('/(admin)/playground')}>
+									<FlaskConical data-icon="inline-start" />
+									Open Playground
+								</Button>
+							{/snippet}
+						</EmptyState>
+					{/if}
+				{/snippet}
+			</PaymentList>
+		{/if}
 
-	{#if rows.length > 0 || cursors.length > 0}
-		<CursorPager
-			start={pageStart}
-			end={pageEnd}
-			{total}
-			hasPrevious={cursors.length > 0}
-			hasNext={Boolean(list.data?.next_cursor)}
-			busy={list.loading}
-			onprevious={prevPage}
-			onnext={nextPage}
-		/>
-	{/if}
+		{#if rows.length > 0 || cursors.length > 0}
+			<CursorPager
+				start={pageStart}
+				end={pageEnd}
+				{total}
+				hasPrevious={cursors.length > 0}
+				hasNext={Boolean(list.data?.next_cursor)}
+				busy={list.loading}
+				onprevious={prevPage}
+				onnext={nextPage}
+				framed={rows.length > 0}
+			/>
+		{/if}
+	</div>
 </div>
 
 <PaymentFilterSheet

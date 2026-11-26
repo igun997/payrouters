@@ -158,34 +158,39 @@
 		>
 			<Tabs.Trigger
 				value="inbound"
+				aria-label="Inbound events"
 				class="h-auto min-h-touch flex-none rounded-md px-3 text-label font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm md:-mb-px md:rounded-none md:border-b-2 md:border-transparent md:px-0 md:font-medium md:data-[state=active]:border-b-primary md:data-[state=active]:bg-transparent md:data-[state=active]:shadow-none"
 			>
-				Inbound events
+				<span class="md:hidden" aria-hidden="true">Inbound</span>
+				<span class="max-md:hidden">Inbound events</span>
 			</Tabs.Trigger>
 			<Tabs.Trigger
 				value="outbound"
+				aria-label="Outbound deliveries"
 				class="h-auto min-h-touch flex-none rounded-md px-3 text-label font-semibold text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm md:-mb-px md:rounded-none md:border-b-2 md:border-transparent md:px-0 md:font-medium md:data-[state=active]:border-b-primary md:data-[state=active]:bg-transparent md:data-[state=active]:shadow-none"
 			>
-				Outbound deliveries
+				<span class="md:hidden" aria-hidden="true">Outbound</span>
+				<span class="max-md:hidden">Outbound deliveries</span>
 			</Tabs.Trigger>
 		</Tabs.List>
 
 		<Tabs.Content value="inbound" class="flex flex-col gap-section" data-testid="inbound-panel">
 			<div class="flex flex-wrap items-center gap-2">
-				<div data-testid="filter-account" class="w-full md:w-72">
+				<div data-testid="filter-account" class="md:w-72">
 					<SelectField
 						bind:value={accountId}
 						options={accountOptions}
 						label="Provider account"
-						class="w-full"
+						loading={accounts.loading && !accounts.data}
+						class="w-auto rounded-full md:w-full md:rounded-md"
 					/>
 				</div>
-				<div data-testid="filter-outcome" class="w-full md:w-56">
+				<div data-testid="filter-outcome" class="md:w-56">
 					<SelectField
 						bind:value={outcome}
 						options={outcomeOptions}
 						label="Outcome"
-						class="w-full"
+						class="w-auto rounded-full md:w-full md:rounded-md"
 					/>
 				</div>
 				<span class="hidden text-helper text-muted-foreground md:ml-auto md:inline">
@@ -209,7 +214,7 @@
 					<span class="hidden lg:block">Error</span>
 				</div>
 
-				{#if inbox.loading && inbox.items.length === 0}
+				{#if (inbox.loading && inbox.items.length === 0) || (accounts.loading && !accounts.data) || (meta.loading && !meta.data)}
 					<ul class="divide-y" aria-busy="true" aria-label="Loading events">
 						{#each Array.from({ length: 5 }, (_, i) => i) as i (i)}
 							<li class="flex flex-col gap-3 p-card md:flex-row md:items-center md:px-6 md:py-4">
@@ -274,20 +279,21 @@
 
 		<Tabs.Content value="outbound" class="flex flex-col gap-section" data-testid="outbound-panel">
 			<div class="flex flex-wrap items-center gap-2">
-				<div data-testid="filter-product" class="w-full md:w-60">
+				<div data-testid="filter-product" class="md:w-60">
 					<SelectField
 						bind:value={productId}
 						options={productOptions}
 						label="Product"
-						class="w-full"
+						loading={products.loading && !products.data}
+						class="w-auto rounded-full md:w-full md:rounded-md"
 					/>
 				</div>
-				<div data-testid="filter-status" class="w-full md:w-52">
+				<div data-testid="filter-status" class="md:w-52">
 					<SelectField
 						bind:value={deliveryStatus}
 						options={statusOptions}
 						label="Status"
-						class="w-full"
+						class="w-auto rounded-full md:w-full md:rounded-md"
 					/>
 				</div>
 				<span class="hidden text-helper text-muted-foreground md:ml-auto md:inline">
@@ -304,11 +310,13 @@
 					<span>Event</span>
 					<span>Product</span>
 					<span>Status</span>
+					<span class="hidden lg:block">Attempts</span>
 					<span>Last response</span>
+					<span class="hidden lg:block">Next attempt</span>
 					<span class="sr-only">Actions</span>
 				</div>
 
-				{#if outbox.loading && outbox.items.length === 0}
+				{#if (outbox.loading && outbox.items.length === 0) || (products.loading && !products.data)}
 					<ul class="divide-y" aria-busy="true" aria-label="Loading deliveries">
 						{#each Array.from({ length: 5 }, (_, i) => i) as i (i)}
 							<li class="flex flex-col gap-3 p-card md:flex-row md:items-center md:px-6 md:py-4">

@@ -3,10 +3,15 @@
 	// columns and comes first, with a divider under it. From md: four columns in the given order,
 	// the emphasised item in the signal colour.
 	import { cn } from '#lib/utils';
+	import { Skeleton } from '#lib/components/ui/skeleton';
 
 	type Item = { label: string; value: string; emphasis?: boolean };
 
-	let { items, testid = 'totals-strip' }: { items: Item[]; testid?: string } = $props();
+	let {
+		items,
+		loading = false,
+		testid = 'totals-strip'
+	}: { items: Item[]; loading?: boolean; testid?: string } = $props();
 </script>
 
 <dl
@@ -23,7 +28,11 @@
 		>
 			<dt class="text-helper text-inverse-foreground/70">{item.label}</dt>
 			<dd class={cn('tabular text-card-title whitespace-nowrap', item.emphasis && 'text-signal')}>
-				{item.value}
+				{#if loading}
+					<Skeleton class="h-5 w-28 bg-inverse-foreground/15" />
+				{:else}
+					{item.value}
+				{/if}
 			</dd>
 		</div>
 	{/each}

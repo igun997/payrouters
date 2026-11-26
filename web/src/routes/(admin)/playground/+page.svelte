@@ -70,6 +70,7 @@
 <div data-testid="page-playground" class="flex flex-col gap-section">
 	<PageHeader
 		title={mode === 'sandbox' ? 'Sandbox playground' : 'Live playground'}
+		phoneTitle="Playground"
 		description={mode === 'sandbox'
 			? 'Create a payment against your sandbox accounts and open its checkout.'
 			: 'Create a payment against your live accounts. These are real payments.'}
@@ -77,15 +78,26 @@
 
 	<div class="grid gap-section xl:grid-cols-[minmax(0,1fr)_400px]">
 		<section class="min-w-0 rounded-lg border bg-card p-card" data-testid="playground-form-card">
-			<PaymentForm
-				{mode}
-				products={products.data?.data ?? []}
-				accounts={accounts.data?.data ?? []}
-				meta={meta.data}
-				{submitting}
-				error={submitError}
-				onsubmit={create}
-			/>
+			{#if (products.loading && !products.data) || (accounts.loading && !accounts.data) || (meta.loading && !meta.data)}
+				<div class="flex flex-col gap-5" aria-busy="true" data-testid="playground-form-skeleton">
+					{#each Array.from({ length: 5 }, (_, i) => i) as i (i)}
+						<div class="flex flex-col gap-2">
+							<SkeletonBlock class="h-4 w-24" />
+							<SkeletonBlock class="h-11 w-full" />
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<PaymentForm
+					{mode}
+					products={products.data?.data ?? []}
+					accounts={accounts.data?.data ?? []}
+					meta={meta.data}
+					{submitting}
+					error={submitError}
+					onsubmit={create}
+				/>
+			{/if}
 		</section>
 
 		<div class="flex min-w-0 flex-col gap-section">

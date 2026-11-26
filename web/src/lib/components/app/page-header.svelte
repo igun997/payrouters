@@ -11,13 +11,16 @@
 		title,
 		description,
 		actions,
-		rangeControl = false
+		rangeControl = false,
+		phoneTitle
 	}: {
 		title: string;
 		description?: string;
 		actions?: Snippet;
 		/** Show the shared date range control in the top bar (Overview, Cash-ins). */
 		rangeControl?: boolean;
+		/** Shorter top-bar title on phones, where long titles wrap. */
+		phoneTitle?: string;
 	} = $props();
 
 	const phone = new IsMobile(768);
@@ -25,6 +28,7 @@
 	$effect(() => {
 		shell.set({
 			title,
+			phoneTitle,
 			subtitle: description ?? null,
 			rangeControl,
 			actions: phone.current ? null : (actions ?? null)

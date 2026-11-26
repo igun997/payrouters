@@ -8,7 +8,7 @@
 	import AppShellTabBar from './app-shell-tabbar.svelte';
 	import AppShellMore from './app-shell-more.svelte';
 	import LiveBanner from './live-banner.svelte';
-	import { sidebarNav, isActive } from './app-shell-nav';
+	import { sidebarNav, tabNav, isActive, overviewHref } from './app-shell-nav';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import { cn } from '#lib/utils';
 
@@ -31,6 +31,12 @@
 	/** The path the More panel was opened on; it is open only while the path is unchanged. */
 	let moreAt = $state<string | null>(null);
 	const moreOpen = $derived(moreAt === path);
+	/** Products, Webhooks and Playground are reached from More and lead back to it on phones. */
+	const fromMore = $derived(
+		path !== overviewHref &&
+			!tabNav.some((item) => isActive(path, item.href)) &&
+			sidebarNav.some((item) => isActive(path, item.href))
+	);
 </script>
 
 <div class="flex h-svh overflow-hidden bg-background text-foreground">
@@ -86,7 +92,12 @@
 		{#if moreOpen}
 			<AppShellMore onclose={() => (moreAt = null)} {onsignout} />
 		{:else}
-			<AppShellTopBar {title} {subtitle} {showRange} />
+			<AppShellTopBar
+				{title}
+				{subtitle}
+				{showRange}
+				onback={fromMore ? () => (moreAt = path) : undefined}
+			/>
 			<LiveBanner />
 			<main class="flex min-h-0 flex-1 flex-col overflow-y-auto">
 				<div

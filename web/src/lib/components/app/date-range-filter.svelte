@@ -51,7 +51,7 @@
 			<Popover.Content
 				align="end"
 				sideOffset={8}
-				class="z-50 w-[min(640px,calc(100vw-2rem))] rounded-xl border bg-popover p-card text-popover-foreground shadow-lg outline-none"
+				class="z-50 max-h-[min(var(--bits-popover-content-available-height),calc(100svh-2rem))] w-[min(640px,calc(100vw-2rem))] overflow-y-auto rounded-xl border bg-popover p-card text-popover-foreground shadow-lg outline-none"
 				data-testid="date-range-popover"
 			>
 				<DateRangePanel

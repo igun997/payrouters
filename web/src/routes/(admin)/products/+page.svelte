@@ -367,7 +367,7 @@
 
 	<ErrorAlert error={products.error} subject="products" onretry={refresh} />
 
-	{#if products.loading && !products.data}
+	{#if (products.loading && !products.data) || (providers.loading && !providers.data) || (meta.loading && !meta.data)}
 		<div class="flex flex-col gap-section" aria-busy="true" aria-label="Loading products">
 			{#each Array.from({ length: 3 }, (_, i) => i) as i (i)}
 				<Skeleton class="h-28 w-full rounded-lg" />

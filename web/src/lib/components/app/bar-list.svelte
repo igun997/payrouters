@@ -39,8 +39,8 @@
 				<div class="flex min-w-0 items-center gap-3">
 					<ProviderMark provider={row.provider} />
 					<div class="flex min-w-0 flex-1 flex-col">
-						<span class="truncate text-label">{row.label}</span>
-						<span class="truncate text-helper text-muted-foreground">{row.detail}</span>
+						<span class="text-label break-words">{row.label}</span>
+						<span class="text-helper break-words text-muted-foreground">{row.detail}</span>
 					</div>
 					<span class="tabular shrink-0 text-card-title whitespace-nowrap">
 						{format(row.amount)}

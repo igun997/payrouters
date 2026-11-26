@@ -14,6 +14,7 @@
 	import { shell } from '#lib/state/shell.svelte';
 	import { loadMeta, methodLabels, providerLabels } from '#lib/state/catalog.svelte';
 	import { Skeleton } from '#lib/components/ui/skeleton';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import PageHeader from '#lib/components/app/page-header.svelte';
 	import StatGrid from '#lib/components/app/stat-grid.svelte';
 	import KpiCard from '#lib/components/app/kpi-card.svelte';
@@ -215,7 +216,9 @@
 			<h2 class="text-card-title">Gross cash-in per day</h2>
 			<p class="text-helper text-muted-foreground">
 				{#if peak}
-					Peak {formatIdr(peak.gross)} on {shortDay(peak.date)}. Days follow Asia/Jakarta.
+					Peak {formatIdr(peak.gross)} on {shortDay(peak.date)}.<span class="hidden md:inline">
+						&#32;Days follow Asia/Jakarta.
+					</span>
 				{:else}
 					Paid amounts by day, Asia/Jakarta.
 				{/if}
@@ -260,12 +263,13 @@
 			href={resolve('/(admin)/payments')}
 			class="inline-flex min-h-touch items-center text-label underline-offset-4 hover:underline"
 		>
-			View all →
+			View all
+			<ChevronRight class="size-4" />
 		</a>
 	</div>
 	<PaymentList
 		payments={recent.data?.data ?? []}
-		loading={recent.loading && !recent.data}
+		loading={(recent.loading && !recent.data) || (meta.loading && !meta.data)}
 		variant="recent"
 		bare
 		providerLabels={providerName}

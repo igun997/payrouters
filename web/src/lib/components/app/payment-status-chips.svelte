@@ -4,14 +4,21 @@
 	// disappears once the row is scrolled to its end.
 	import { cn } from '#lib/utils';
 	import { formatInt } from '#lib/format';
+	import { Skeleton } from '#lib/components/ui/skeleton';
 
 	type Counts = Partial<Record<'' | 'paid' | 'pending' | 'expired' | 'failed', number>>;
 
 	let {
 		counts,
 		value,
-		onchange
-	}: { counts: Counts; value: string; onchange: (status: string) => void } = $props();
+		onchange,
+		loading = false
+	}: {
+		counts: Counts;
+		value: string;
+		onchange: (status: string) => void;
+		loading?: boolean;
+	} = $props();
 
 	const chips: { value: '' | 'paid' | 'pending' | 'expired' | 'failed'; label: string }[] = [
 		{ value: '', label: 'All' },
@@ -62,7 +69,9 @@
 					onclick={() => onchange(chip.value)}
 				>
 					{chip.label}
-					{#if counts[chip.value] !== undefined}
+					{#if loading && counts[chip.value] === undefined}
+						<Skeleton class="h-3.5 w-5" />
+					{:else if counts[chip.value] !== undefined}
 						<span
 							class={cn(
 								'tabular text-helper',

@@ -5,7 +5,6 @@
 	import { resolve } from '$app/paths';
 	import type { AdminPayment } from '#lib/api/types';
 	import DataList, { type DataColumn } from './data-list.svelte';
-	import ProviderMark from './provider-mark.svelte';
 	import StatusBadge from './status-badge.svelte';
 	import * as Table from '#lib/components/ui/table';
 	import { clockJakarta, listDateTime } from '#lib/admin-view';
@@ -41,7 +40,7 @@
 					{ header: 'Provider and method', class: 'hidden lg:table-cell' },
 					{ header: 'Amount', align: 'end' },
 					{ header: 'Status' },
-					{ header: '', class: 'hidden w-10 lg:table-cell' }
+					{ header: '', class: 'w-10' }
 				]
 			: [
 					{ header: 'Time' },
@@ -63,7 +62,12 @@
 {#snippet cells(p: AdminPayment)}
 	{#if variant === 'full'}
 		<Table.Cell class="whitespace-nowrap text-muted-foreground">
-			{listDateTime(p.created_at)}
+			{@const [day, time] = listDateTime(p.created_at).split(', ')}
+			<span class="block lg:inline">{day}</span><span class="hidden lg:inline">, </span><span
+				class="block lg:inline"
+			>
+				{time}
+			</span>
 		</Table.Cell>
 	{:else}
 		<Table.Cell class="tabular whitespace-nowrap text-muted-foreground">
@@ -90,7 +94,7 @@
 	</Table.Cell>
 	<Table.Cell><StatusBadge status={p.status} /></Table.Cell>
 	{#if variant === 'full'}
-		<Table.Cell class="hidden w-10 text-muted-foreground lg:table-cell">
+		<Table.Cell class="w-10 text-muted-foreground">
 			<ChevronRight class="size-4" aria-hidden="true" />
 		</Table.Cell>
 	{/if}
@@ -101,10 +105,9 @@
 		href={resolve('/(admin)/payments/[id]', { id: p.id })}
 		class="flex items-center gap-3 px-card py-3.5"
 	>
-		<ProviderMark provider={p.provider} />
 		<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 			<span class="truncate text-mono-id font-mono font-medium">{p.order_id}</span>
-			<span class="truncate text-helper text-muted-foreground">
+			<span class="text-helper break-words text-muted-foreground">
 				{p.product.name} · {providerLine(p)}
 			</span>
 			{#if variant === 'recent'}

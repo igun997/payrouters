@@ -14,7 +14,8 @@
 		providerLabels,
 		methodLabels,
 		empty,
-		testid = 'cash-in-list'
+		testid = 'cash-in-list',
+		bare = false
 	}: {
 		rows: CashIn[];
 		loading?: boolean;
@@ -22,6 +23,7 @@
 		methodLabels: Record<string, string>;
 		empty?: Snippet;
 		testid?: string;
+		bare?: boolean;
 	} = $props();
 
 	const columns: DataColumn[] = [
@@ -121,4 +123,5 @@
 	row={cells}
 	{card}
 	{empty}
+	{bare}
 />

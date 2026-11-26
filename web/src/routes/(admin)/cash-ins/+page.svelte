@@ -17,6 +17,7 @@
 	import TotalsStrip from '#lib/components/app/totals-strip.svelte';
 	import CashInList from '#lib/components/app/cash-in-list.svelte';
 	import CursorPager from '#lib/components/app/cursor-pager.svelte';
+	import { cn } from '#lib/utils';
 	import EmptyState from '#lib/components/app/empty-state.svelte';
 	import Download from '@lucide/svelte/icons/download';
 	import Banknote from '@lucide/svelte/icons/banknote';
@@ -209,9 +210,27 @@
 		</ResponsiveDialog>
 	{:else}
 		<div class="flex flex-wrap items-center gap-2">
-			<SelectField bind:value={provider} options={providerOptions} label="Provider" class="w-44" />
-			<SelectField bind:value={method} options={methodOptions} label="Method" class="w-44" />
-			<SelectField bind:value={productId} options={productOptions} label="Product" class="w-44" />
+			<SelectField
+				bind:value={provider}
+				options={providerOptions}
+				label="Provider"
+				class="w-44"
+				loading={meta.loading && !meta.data}
+			/>
+			<SelectField
+				bind:value={method}
+				options={methodOptions}
+				label="Method"
+				class="w-44"
+				loading={meta.loading && !meta.data}
+			/>
+			<SelectField
+				bind:value={productId}
+				options={productOptions}
+				label="Product"
+				class="w-44"
+				loading={products.loading && !products.data}
+			/>
 			<Button
 				variant="outline"
 				class="ml-auto"
@@ -225,7 +244,7 @@
 		</div>
 	{/if}
 
-	<TotalsStrip items={totalItems} testid="cash-in-totals" />
+	<TotalsStrip items={totalItems} loading={list.loading && !list.data} testid="cash-in-totals" />
 
 	<ErrorAlert error={list.error} subject="cash-ins" />
 
@@ -250,32 +269,36 @@
 		</div>
 	{/if}
 
-	<CashInList
-		{rows}
-		loading={list.loading && !list.data}
-		providerLabels={providerName}
-		methodLabels={methodName}
-	>
-		{#snippet empty()}
-			<EmptyState
-				icon={Banknote}
-				title="No cash-ins in this range"
-				description="Settled payments appear here once they are paid."
-				dashed
-			/>
-		{/snippet}
-	</CashInList>
+	<div class={cn(rows.length > 0 && 'overflow-hidden rounded-lg border border-border bg-card')}>
+		<CashInList
+			bare={rows.length > 0}
+			{rows}
+			loading={(list.loading && !list.data) || (meta.loading && !meta.data)}
+			providerLabels={providerName}
+			methodLabels={methodName}
+		>
+			{#snippet empty()}
+				<EmptyState
+					icon={Banknote}
+					title="No cash-ins in this range"
+					description="Settled payments appear here once they are paid."
+					dashed
+				/>
+			{/snippet}
+		</CashInList>
 
-	{#if rows.length > 0 || cursors.length > 0}
-		<CursorPager
-			start={pageStart}
-			end={pageEnd}
-			total={totals?.count ?? null}
-			hasPrevious={cursors.length > 0}
-			hasNext={Boolean(list.data?.next_cursor)}
-			busy={list.loading}
-			onprevious={prevPage}
-			onnext={nextPage}
-		/>
-	{/if}
+		{#if rows.length > 0 || cursors.length > 0}
+			<CursorPager
+				start={pageStart}
+				end={pageEnd}
+				total={totals?.count ?? null}
+				hasPrevious={cursors.length > 0}
+				hasNext={Boolean(list.data?.next_cursor)}
+				busy={list.loading}
+				onprevious={prevPage}
+				onnext={nextPage}
+				framed={rows.length > 0}
+			/>
+		{/if}
+	</div>
 </div>

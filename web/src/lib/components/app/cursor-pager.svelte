@@ -5,6 +5,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { formatInt } from '#lib/format';
+	import { cn } from '#lib/utils';
 
 	let {
 		start,
@@ -15,7 +16,8 @@
 		busy = false,
 		onprevious,
 		onnext,
-		testid = 'pager'
+		testid = 'pager',
+		framed = false
 	}: {
 		start: number;
 		end: number;
@@ -26,10 +28,18 @@
 		onprevious: () => void;
 		onnext: () => void;
 		testid?: string;
+		/** Footer of a card that already frames the list: a top rule and card padding. */
+		framed?: boolean;
 	} = $props();
 </script>
 
-<div class="flex items-center justify-between gap-3" data-testid={testid}>
+<div
+	class={cn(
+		'flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between',
+		framed && 'border-t border-border p-card'
+	)}
+	data-testid={testid}
+>
 	<span class="tabular text-helper text-muted-foreground" data-testid="pager-status">
 		{#if end === 0}
 			No rows
