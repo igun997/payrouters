@@ -1,0 +1,18 @@
+# Local development database. `docker compose up -d db`
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: payrouters
+      POSTGRES_PASSWORD: payrouters
+      POSTGRES_DB: payrouters
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payrouters"]
+      interval: 3s
+      retries: 20
+volumes:
+  pgdata:

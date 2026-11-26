@@ -1,0 +1,12 @@
+[package]
+name = "payrouters-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock", "std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+uuid = { version = "1.29.3", features = ["serde"] }
