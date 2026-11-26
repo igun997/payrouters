@@ -96,6 +96,12 @@ Restart=always
 
 Run a single instance (the workers assume it; row locks keep a second one safe but unnecessary).
 
+## Design, UI and end-to-end tests
+
+- Design: Wonder file "PayRouters" (108 artboards, names end with the viewport width). Handoff, breakpoint/type/spacing scale and screen index: `docs/design.md`; generated scale: `docs/responsive.css` (merged into `web/src/routes/layout.css`); builder rules and shared components: `docs/web-conventions.md`.
+- Breakpoints: 320 XS, 360 Base, 768 md, 1024 lg, 1280 xl (primary 1366x768), 1536 2xl; type, spacing and layout switch per breakpoint.
+- E2E (Playwright, real server + Postgres, built SPA): `docs/e2e.md`. `cd web && pnpm build && pnpm test:e2e` (163 tests: login, products, providers, payments, cash-ins, webhooks, playground, live mode, Snap states, a 5-viewport responsive sweep, axe accessibility).
+
 ## Tests
 
 ```bash

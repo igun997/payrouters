@@ -1,0 +1,111 @@
+<script lang="ts">
+	/**
+	 * API keys of one product. Rows are a grid from md (table) and stacked cards below, so one DOM
+	 * serves every width. Full key values are never listed: only the prefix.
+	 */
+	import type { ApiKey } from '#lib/api/types';
+	import { keyDate, keyLastUsed } from '#lib/key-format';
+	import Pill from '#lib/components/app/pill.svelte';
+	import { Button } from '#lib/components/ui/button';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+
+	let {
+		keys,
+		onCreate,
+		onRevoke
+	}: {
+		keys: ApiKey[];
+		onCreate: () => void;
+		onRevoke: (key: ApiKey) => void;
+	} = $props();
+
+	const activeCount = $derived(keys.filter((k) => !k.revoked_at).length);
+</script>
+
+<div class="flex flex-col gap-3">
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<p class="min-w-0 flex-1 text-helper text-muted-foreground">
+			A sandbox key reaches only sandbox provider accounts; a live key reaches live ones. Full keys
+			are shown once.
+		</p>
+		<Button size="sm" onclick={onCreate} data-testid="create-api-key-button">
+			<Plus data-icon="inline-start" />
+			API key
+		</Button>
+	</div>
+
+	{#if keys.length === 0}
+		<p
+			class="rounded-md border border-dashed px-4 py-6 text-center text-body text-muted-foreground"
+			data-testid="api-key-empty"
+		>
+			No keys yet. Create one to connect your backend.
+		</p>
+	{:else}
+		<ul
+			class="flex flex-col overflow-hidden rounded-md border"
+			data-testid="api-key-list"
+			aria-label="API keys"
+			data-active={activeCount}
+		>
+			<li
+				aria-hidden="true"
+				class="hidden gap-x-4 bg-secondary px-4 py-2.5 text-helper font-semibold text-muted-foreground md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_auto_auto_auto]"
+			>
+				<span>Name</span>
+				<span>Mode</span>
+				<span>Prefix</span>
+				<span>Created</span>
+				<span>Last used</span>
+				<span>Status</span>
+				<span></span>
+			</li>
+			{#each keys as key (key.id)}
+				{@const revoked = key.revoked_at !== null}
+				<li
+					class="flex flex-col gap-2 border-t px-4 py-3 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_auto_auto_auto] md:items-center md:gap-x-4 md:py-2.5"
+					data-testid="api-key-row"
+					data-status={revoked ? 'revoked' : 'active'}
+				>
+					<div class="flex min-w-0 items-center justify-between gap-2 md:contents">
+						<span class="min-w-0 truncate text-cell font-medium text-foreground">{key.name}</span>
+						<Pill tone={key.mode === 'live' ? 'success' : 'sandbox'}>
+							{key.mode === 'live' ? 'Live' : 'Sandbox'}
+						</Pill>
+					</div>
+					<span class="min-w-0 truncate text-mono-id font-mono text-muted-foreground">
+						{key.prefix}…
+					</span>
+					<div
+						class="tabular flex flex-wrap gap-x-4 gap-y-1 text-helper text-muted-foreground md:contents"
+					>
+						<span class="md:text-cell">Created {keyDate(key.created_at)}</span>
+						<span class="md:text-cell">
+							Last used {keyLastUsed(key.last_used_at)}
+						</span>
+					</div>
+					<div class="flex items-center justify-between gap-2 md:contents">
+						<span>
+							<Pill tone={revoked ? 'neutral' : 'success'}>{revoked ? 'Revoked' : 'Active'}</Pill>
+						</span>
+						{#if revoked}
+							<span></span>
+						{:else}
+							<Button
+								variant="ghost"
+								size="sm"
+								class="justify-self-end text-destructive hover:text-destructive"
+								aria-label="Revoke {key.name}"
+								onclick={() => onRevoke(key)}
+							>
+								<Trash2 data-icon="inline-start" />
+								Revoke
+							</Button>
+						{/if}
+					</div>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</div>

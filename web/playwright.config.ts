@@ -17,6 +17,8 @@ export default defineConfig({
 	reporter: [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }]],
 	outputDir: 'e2e-results',
 	use: {
+		// Full Chromium in new headless mode: avoids the separate headless-shell download.
+		channel: 'chromium',
 		baseURL: `http://127.0.0.1:${PORT}`,
 		trace: 'retain-on-failure',
 		screenshot: 'only-on-failure',
@@ -24,6 +26,10 @@ export default defineConfig({
 		timezoneId: 'Asia/Jakarta'
 	},
 	projects: [
+		{
+			name: 'desktop',
+			use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 768 } }
+		},
 		{
 			name: 'phone',
 			use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } },

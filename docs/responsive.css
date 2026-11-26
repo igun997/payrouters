@@ -1,0 +1,197 @@
+/* PayRouters responsive scale. Source of truth: Wonder file "PayRouters", artboard "Foundations Breakpoints".
+   Breakpoints (min-width): base 0 = XS 320-359, 360 = Base, 768 = md, 1024 = lg, 1280 = xl (1366x768 primary), 1536 = 2xl.
+   Components use the semantic classes below and never write md:/lg: for type or spacing. */
+@import "tailwindcss";
+
+/* Palette and fonts: copy the Wonder token values 1:1 (see docs/design.md for the full list). */
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --breakpoint-xs: 22.5rem; /* 360px, the Base start */
+}
+
+@theme inline {
+  --spacing-page: var(--page-pad);
+  --spacing-card: var(--card-pad);
+  --spacing-section: var(--section-gap);
+  --spacing-dialog: var(--dialog-pad);
+  --spacing-control: var(--control-h);
+}
+
+:root {
+  --fs-amount-xl: 36px; --lh-amount-xl: 40px;
+  --fs-amount-lg: 28px; --lh-amount-lg: 34px;
+  --fs-stat: 22px; --lh-stat: 28px;
+  --fs-result-title: 24px; --lh-result-title: 30px;
+  --fs-page-title: 20px; --lh-page-title: 26px;
+  --fs-dialog-title: 18px; --lh-dialog-title: 24px;
+  --fs-card-title: 16px; --lh-card-title: 22px;
+  --fs-body: 14px; --lh-body: 20px;
+  --fs-label: 14px; --lh-label: 20px;
+  --fs-helper: 13px; --lh-helper: 18px;
+  --fs-micro: 12px; --lh-micro: 16px;
+  --fs-mono-id: 14px; --lh-mono-id: 20px;
+  --fs-mono-va: 22px; --lh-mono-va: 28px;
+  --fs-cell: 14px; --lh-cell: 20px;
+  --fs-tab: 12px; --lh-tab: 16px;
+  --fs-button: 15px; --lh-button: 20px;
+  --page-pad: 16px;
+  --card-pad: 16px;
+  --section-gap: 12px;
+  --dialog-pad: 16px;
+  --control-h: 48px;
+}
+
+@media (min-width: 360px) {
+  :root {
+    --fs-amount-xl: 44px; --lh-amount-xl: 48px;
+    --fs-amount-lg: 34px; --lh-amount-lg: 40px;
+    --fs-stat: 24px; --lh-stat: 30px;
+    --fs-result-title: 28px; --lh-result-title: 34px;
+    --fs-page-title: 22px; --lh-page-title: 28px;
+    --fs-dialog-title: 20px; --lh-dialog-title: 26px;
+    --fs-card-title: 16px; --lh-card-title: 22px;
+    --fs-body: 15px; --lh-body: 22px;
+    --fs-label: 14px; --lh-label: 20px;
+    --fs-helper: 13px; --lh-helper: 18px;
+    --fs-micro: 12px; --lh-micro: 16px;
+    --fs-mono-id: 15px; --lh-mono-id: 20px;
+    --fs-mono-va: 28px; --lh-mono-va: 34px;
+    --fs-cell: 14px; --lh-cell: 20px;
+    --fs-tab: 13px; --lh-tab: 16px;
+    --fs-button: 15px; --lh-button: 20px;
+    --page-pad: 20px;
+    --card-pad: 20px;
+    --section-gap: 16px;
+    --dialog-pad: 20px;
+    --control-h: 48px;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --fs-amount-xl: 44px; --lh-amount-xl: 48px;
+    --fs-amount-lg: 36px; --lh-amount-lg: 42px;
+    --fs-stat: 24px; --lh-stat: 30px;
+    --fs-result-title: 28px; --lh-result-title: 34px;
+    --fs-page-title: 24px; --lh-page-title: 30px;
+    --fs-dialog-title: 20px; --lh-dialog-title: 26px;
+    --fs-card-title: 18px; --lh-card-title: 24px;
+    --fs-body: 15px; --lh-body: 22px;
+    --fs-label: 14px; --lh-label: 20px;
+    --fs-helper: 13px; --lh-helper: 18px;
+    --fs-micro: 12px; --lh-micro: 16px;
+    --fs-mono-id: 14px; --lh-mono-id: 20px;
+    --fs-mono-va: 28px; --lh-mono-va: 34px;
+    --fs-cell: 14px; --lh-cell: 20px;
+    --fs-tab: 13px; --lh-tab: 16px;
+    --fs-button: 15px; --lh-button: 20px;
+    --page-pad: 24px;
+    --card-pad: 20px;
+    --section-gap: 16px;
+    --dialog-pad: 24px;
+    --control-h: 44px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --fs-amount-xl: 44px; --lh-amount-xl: 48px;
+    --fs-amount-lg: 36px; --lh-amount-lg: 42px;
+    --fs-stat: 24px; --lh-stat: 30px;
+    --fs-result-title: 28px; --lh-result-title: 34px;
+    --fs-page-title: 24px; --lh-page-title: 30px;
+    --fs-dialog-title: 20px; --lh-dialog-title: 26px;
+    --fs-card-title: 18px; --lh-card-title: 24px;
+    --fs-body: 15px; --lh-body: 22px;
+    --fs-label: 14px; --lh-label: 20px;
+    --fs-helper: 13px; --lh-helper: 18px;
+    --fs-micro: 12px; --lh-micro: 16px;
+    --fs-mono-id: 14px; --lh-mono-id: 20px;
+    --fs-mono-va: 28px; --lh-mono-va: 34px;
+    --fs-cell: 14px; --lh-cell: 20px;
+    --fs-tab: 13px; --lh-tab: 16px;
+    --fs-button: 15px; --lh-button: 20px;
+    --page-pad: 24px;
+    --card-pad: 24px;
+    --section-gap: 20px;
+    --dialog-pad: 24px;
+    --control-h: 44px;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --fs-amount-xl: 44px; --lh-amount-xl: 48px;
+    --fs-amount-lg: 36px; --lh-amount-lg: 42px;
+    --fs-stat: 24px; --lh-stat: 30px;
+    --fs-result-title: 28px; --lh-result-title: 34px;
+    --fs-page-title: 24px; --lh-page-title: 30px;
+    --fs-dialog-title: 20px; --lh-dialog-title: 26px;
+    --fs-card-title: 18px; --lh-card-title: 24px;
+    --fs-body: 15px; --lh-body: 22px;
+    --fs-label: 14px; --lh-label: 20px;
+    --fs-helper: 13px; --lh-helper: 18px;
+    --fs-micro: 12px; --lh-micro: 16px;
+    --fs-mono-id: 14px; --lh-mono-id: 20px;
+    --fs-mono-va: 28px; --lh-mono-va: 34px;
+    --fs-cell: 14px; --lh-cell: 20px;
+    --fs-tab: 13px; --lh-tab: 16px;
+    --fs-button: 15px; --lh-button: 20px;
+    --page-pad: 32px;
+    --card-pad: 24px;
+    --section-gap: 20px;
+    --dialog-pad: 24px;
+    --control-h: 44px;
+  }
+}
+
+@media (min-width: 1536px) {
+  :root {
+    --fs-amount-xl: 44px; --lh-amount-xl: 48px;
+    --fs-amount-lg: 36px; --lh-amount-lg: 42px;
+    --fs-stat: 30px; --lh-stat: 36px;
+    --fs-result-title: 28px; --lh-result-title: 34px;
+    --fs-page-title: 28px; --lh-page-title: 34px;
+    --fs-dialog-title: 20px; --lh-dialog-title: 26px;
+    --fs-card-title: 18px; --lh-card-title: 24px;
+    --fs-body: 15px; --lh-body: 22px;
+    --fs-label: 14px; --lh-label: 20px;
+    --fs-helper: 13px; --lh-helper: 18px;
+    --fs-micro: 12px; --lh-micro: 16px;
+    --fs-mono-id: 14px; --lh-mono-id: 20px;
+    --fs-mono-va: 28px; --lh-mono-va: 34px;
+    --fs-cell: 14px; --lh-cell: 20px;
+    --fs-tab: 13px; --lh-tab: 16px;
+    --fs-button: 15px; --lh-button: 20px;
+    --page-pad: 32px;
+    --card-pad: 24px;
+    --section-gap: 20px;
+    --dialog-pad: 24px;
+    --control-h: 44px;
+  }
+}
+
+/* Semantic type utilities: one class per style, value switches via the variables above. */
+@utility text-amount-xl { font-size: var(--fs-amount-xl); line-height: var(--lh-amount-xl); font-weight: 800; letter-spacing: -0.025em; }
+@utility text-amount-lg { font-size: var(--fs-amount-lg); line-height: var(--lh-amount-lg); font-weight: 800; letter-spacing: -0.025em; }
+@utility text-stat { font-size: var(--fs-stat); line-height: var(--lh-stat); font-weight: 800; letter-spacing: -0.025em; }
+@utility text-result-title { font-size: var(--fs-result-title); line-height: var(--lh-result-title); font-weight: 800; letter-spacing: -0.025em; }
+@utility text-page-title { font-size: var(--fs-page-title); line-height: var(--lh-page-title); font-weight: 800; letter-spacing: -0.025em; }
+@utility text-dialog-title { font-size: var(--fs-dialog-title); line-height: var(--lh-dialog-title); font-weight: 700; letter-spacing: -0.025em; }
+@utility text-card-title { font-size: var(--fs-card-title); line-height: var(--lh-card-title); font-weight: 700; letter-spacing: -0.025em; }
+@utility text-body { font-size: var(--fs-body); line-height: var(--lh-body); font-weight: 400; }
+@utility text-label { font-size: var(--fs-label); line-height: var(--lh-label); font-weight: 600; }
+@utility text-helper { font-size: var(--fs-helper); line-height: var(--lh-helper); font-weight: 400; }
+@utility text-micro { font-size: var(--fs-micro); line-height: var(--lh-micro); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+@utility text-mono-id { font-size: var(--fs-mono-id); line-height: var(--lh-mono-id); font-weight: 500; font-family: var(--font-mono); }
+@utility text-mono-va { font-size: var(--fs-mono-va); line-height: var(--lh-mono-va); font-weight: 600; font-family: var(--font-mono); letter-spacing: -0.025em; }
+@utility text-cell { font-size: var(--fs-cell); line-height: var(--lh-cell); font-weight: 400; }
+@utility text-tab { font-size: var(--fs-tab); line-height: var(--lh-tab); font-weight: 600; }
+@utility text-button { font-size: var(--fs-button); line-height: var(--lh-button); font-weight: 600; }
+
+/* Layout switches that cannot be a variable. Tailwind prefixes are fine for these. */
+/*   sidebar: hidden below md (bottom tab bar instead), 72px rail at md, 248px from lg: md:w-[72px] lg:w-[248px] */
+/*   tables: card list below md, table from md: hidden md:block / md:hidden */
+/*   dialogs: bottom sheet below sm (640), centred dialog from sm */
+/*   content: 2xl:mx-auto 2xl:max-w-[1280px] */
