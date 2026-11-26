@@ -1,0 +1,13 @@
+/target
+/web/node_modules
+/web/build
+/web/.svelte-kit
+/sdk/typescript/node_modules
+/sdk/typescript/dist
+.env
+*.log
+/e2e-report
+/e2e-results
+/playwright-report
+.omp/
+/docs/.scratch

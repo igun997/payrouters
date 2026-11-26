@@ -1,0 +1,14 @@
+# web/ implementation conventions (shared by every builder)
+
+Design source: Wonder file "PayRouters" (artboard names end with the viewport width). Handoff: `docs/design.md`; scale: `docs/responsive.css` (already merged into `web/src/routes/layout.css`).
+
+## Rules
+- Type via semantic classes only: `text-amount-xl|amount-lg|stat|result-title|page-title|dialog-title|card-title|body|label|helper|micro|mono-id|mono-va|cell|tab|button`. Never `md:text-*` pairs. Spacing: `p-page`, `p-card`, `gap-section`, `p-dialog`, `h-control`, `min-h-touch`. Add `tabular` on figures. Mono (`font-mono`) for ids, keys, URLs, VA numbers, JSON.
+- Colours via semantic Tailwind tokens: `bg-background|card|secondary|primary|inverse`, `text-foreground|muted-foreground|subtle-foreground|primary-foreground`, `border-border|input`, status `bg-success text-success-foreground` (also pending, failed, expired, sandbox), `text-signal`. No hex literals, no palette classes.
+- Layout switches (Tailwind prefixes allowed only here): sidebar absent <md (bottom tab bar), 72px icon rail at md (768-1023), 248px from lg; tables are card lists <md and tables from md; dialogs are bottom sheets <640 (use `ResponsiveDialog`); stat rows: 1-2 cols <lg, 2 cols md and lg, 4 cols from xl; amounts never wrap (reduce columns, not font); content `2xl:mx-auto 2xl:max-w-[1280px]`.
+- Breakpoints to verify: 320, 390, 768, 1024, 1366 (no horizontal scroll at any).
+- Svelte 5 runes, `#lib/*` imports (not `$lib`), `resolve()` from `$app/paths` for internal hrefs. Lucide icons from `@lucide/svelte/icons/<name>`.
+- Reuse before you write: `#lib/components/app/*` — `responsive-dialog`, `banner`, `pill`, `status-badge`, `empty-state`, `form-field`, `page-header`, `error-alert`, `copy-field`, `copy-button`, `confirm-dialog`, `brand-mark`, `one-time-secret`, `fee-editor`, `kpi-card`, `bar-chart`, `bar-list`, `date-range-filter`, `mode-toggle`, `json-block`, `qr-code`, `select-field`. New reusable component = new file in `components/app/` (or `components/snap/` for the customer page) with a typed `$props()` contract and a header comment. Do not edit a sibling's new file; ask via the lead.
+- Test hooks (e2e relies on them): every page root has `data-testid="page-<name>"`; `PageHeader` renders `data-testid="page-title"`; tables/lists `data-testid="<thing>-list"` with rows `data-testid="<thing>-row"`; every dialog/sheet gets `testid`; primary buttons keep their visible text from the design; form inputs have real `id`/`label` (use `FormField`), so tests use `getByLabel`. Status badge exposes `data-status`.
+- Copy: English, plain, no exclamation marks, no emoji. Money `Rp 150.000` via `#lib/format`.
+- Verify: `cd web && /tmp/pnpmbin/node_modules/.bin/pnpm check && ... lint && ... build` (pnpm 10 shim; global pnpm is broken). Run `mcp__svelte_autofixer` on new components. Do not touch `crates/`, `docs/` (except nothing), do not commit.
