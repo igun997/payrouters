@@ -289,6 +289,7 @@
 
 		{#if rows.length > 0 || cursors.length > 0}
 			<CursorPager
+				page={cursors.length + 1}
 				start={pageStart}
 				end={pageEnd}
 				total={totals?.count ?? null}
