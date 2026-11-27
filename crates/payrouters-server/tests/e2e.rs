@@ -523,8 +523,11 @@ async fn midtrans_notifications_are_verified_with_the_signature_secret_key(pool:
 
     // the recurring and account-linking "Test notification URL" buttons post bodies without any
     // payment field: acknowledged, nothing changes
-    let linking =
-        json!({ "account_id": "gopay-1", "account_status": "ENABLED", "payment_type": "gopay" });
+    let linking = json!({
+        "account_id": "gopay-1", "account_status": "ENABLED", "merchant_id": "G552576396",
+        "payment_type": "gopay", "signature_key": "not-ours-to-verify", "status_code": "200",
+        "status_message": "Midtrans account_linked notification"
+    });
     let ack = app
         .call("POST", &path, None, &[], Some(linking.to_string()))
         .await;

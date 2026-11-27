@@ -286,19 +286,14 @@ pub(crate) fn status_from_payload(v: &Value) -> Option<StatusUpdate> {
     Some(u)
 }
 
-/// A payment notification names an order, a status or a signature. A body with none of them (the
-/// recurring and account-linking notifications) is not about a payment. One that has any of them
-/// but not all the signed fields is still verified, and refused.
+/// A payment notification names an order, a transaction status or an amount. The recurring and
+/// account-linking notifications do not, even though the latter carries a `signature_key` and a
+/// `status_code` (signed in a way Midtrans does not document), so those two fields do not count.
+/// A payment body that has any of the three is verified, and refused when its signature is wrong.
 fn is_payment_notification(v: &Value) -> bool {
-    [
-        "order_id",
-        "transaction_status",
-        "signature_key",
-        "status_code",
-        "gross_amount",
-    ]
-    .iter()
-    .any(|k| v.get(*k).is_some())
+    ["order_id", "transaction_status", "gross_amount"]
+        .iter()
+        .any(|k| v.get(*k).is_some())
 }
 
 /// A signed field as Midtrans wrote it: strings are used verbatim, a bare number as printed.
@@ -492,7 +487,7 @@ impl ProviderAdapter for Midtrans {
             .map_err(|e| WebhookError::Malformed(format!("body is not JSON: {e}")))?;
         // Midtrans has three notification URLs (payment, recurring, account linking) and the dashboard
         // test button sends a different body to each. Only payment notifications carry the signed
-        // fields; the others are acknowledged and ignored, which changes no payment.
+        // order fields; the others are acknowledged and ignored, which changes no payment.
         if !is_payment_notification(&v) {
             return Ok(ParsedWebhook {
                 lookup: Lookup::Ignore,
@@ -786,15 +781,21 @@ mod tests {
 
     #[test]
     fn only_payment_notifications_need_a_signature() {
-        // account linking and recurring tests carry none of the payment fields
-        assert!(!is_payment_notification(
-            &json!({ "account_id": "a-1", "account_status": "ENABLED", "payment_type": "gopay" })
-        ));
+        // the account-linking notification as Midtrans sends it: signed, but not a payment
+        assert!(!is_payment_notification(&json!({
+            "account_id": "00000269-7836-49e5-bc65-e592afafec14",
+            "account_status": "ENABLED",
+            "merchant_id": "G552576396",
+            "payment_type": "gopay",
+            "signature_key": "6b88655a",
+            "status_code": "200",
+            "status_message": "Midtrans account_linked notification"
+        })));
         assert!(!is_payment_notification(&json!({})));
         // a payment body with the signature stripped is still a payment body
         assert!(is_payment_notification(
             &json!({ "order_id": "o-1", "transaction_status": "settlement" })
         ));
-        assert!(is_payment_notification(&json!({ "signature_key": "x" })));
+        assert!(is_payment_notification(&json!({ "gross_amount": "1.00" })));
     }
 }

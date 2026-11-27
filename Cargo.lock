@@ -1442,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "payrouters-sdk"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hex",
  "hmac",
@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "payrouters-server"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1495,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "payrouters-types"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "serde",
