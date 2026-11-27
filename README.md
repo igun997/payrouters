@@ -18,6 +18,28 @@ web/                      SvelteKit SPA (adapter-static): dashboard + public /sn
 docs/api.md               the API contract (the dashboard also serves a product guide at /docs)
 ```
 
+## Screenshots
+
+Demo data (mock provider plus fake Midtrans and Xendit accounts). Regenerate with `web/scripts/capture-screenshots.mjs` against a fresh database; its header comment has the commands.
+
+### Dashboard
+
+| | |
+|---|---|
+| ![Overview: stats, daily chart, share by provider, recent payments](docs/screenshots/overview.png) | ![Payments: status chips, filters and the payment list](docs/screenshots/payments.png) |
+| **Overview** | **Payments** |
+| ![Payment detail: ledger, activity, instructions and Snap link](docs/screenshots/payment-detail.png) | ![Cash-ins: the gross, fee and net ledger](docs/screenshots/cash-ins.png) |
+| **Payment detail** | **Cash-ins** |
+| ![Webhooks: inbound provider events with headers and body](docs/screenshots/webhooks.png) | ![Providers: Midtrans, Xendit and the mock simulator](docs/screenshots/providers.png) |
+| **Webhooks** | **Providers** |
+
+### Phone and the customer page
+
+| | | | |
+|---|---|---|---|
+| <img src="docs/screenshots/overview-phone.png" alt="Overview on a phone" width="200"> | <img src="docs/screenshots/payments-phone.png" alt="Payments on a phone" width="200"> | <img src="docs/screenshots/snap-choose.png" alt="Snap page: choose a payment method" width="200"> | <img src="docs/screenshots/snap-va.png" alt="Snap page: virtual account instructions" width="200"> |
+| **Overview** | **Payments** | **Snap: choose** | **Snap: pay** |
+
 ## Run it
 
 ```bash

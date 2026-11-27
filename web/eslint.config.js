@@ -11,7 +11,8 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
 	// Vendored shadcn-svelte components are generated registry code; they are not linted here.
-	globalIgnores(['src/lib/components/ui/**']),
+	// scripts/ holds standalone Node tools run by hand, outside the app's tsconfig.
+	globalIgnores(['src/lib/components/ui/**', 'scripts/**']),
 	js.configs.recommended,
 	ts.configs.recommendedTypeChecked,
 	svelte.configs.recommended,
