@@ -157,7 +157,7 @@ Verification: Midtrans `signature_key` = SHA512(`order_id`+`status_code`+`gross_
 ## Admin API (`/admin`, bearer `ADMIN_TOKEN`)
 
 ### Meta
-- `GET /admin/me` → `{ "ok": true, "version": "0.1.0", "public_base_url": "https://…", "timezone": "Asia/Jakarta" }` (use to validate a token on login).
+- `GET /admin/me` → `{ "ok": true, "version": "0.2.0", "public_base_url": "https://…", "timezone": "Asia/Jakarta" }` (use to validate a token on login).
 - `GET /admin/meta` →
 ```json
 {

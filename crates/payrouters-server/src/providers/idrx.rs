@@ -228,6 +228,34 @@ pub(crate) fn resolve_target(
     Ok((wallet, chain))
 }
 
+/// IDRX picks the `merchantOrderId` itself, so a mint whose answer was lost cannot be looked up by
+/// an id we know. A short tag derived from the payment id travels in `productDetails`, which IDRX
+/// echoes in the transaction history, and lets `recover_direct` find the order again.
+fn order_tag(payment_id: Uuid) -> String {
+    format!("ref:{}", &payment_id.simple().to_string()[..16])
+}
+
+fn product_details(input: &ChargeInput<'_>) -> String {
+    let tag = order_tag(input.payment_id);
+    let head: String = input
+        .description
+        .map(|d| d.trim().chars().take(255 - tag.len() - 3).collect())
+        .unwrap_or_default();
+    if head.is_empty() {
+        tag
+    } else {
+        format!("{head} ({tag})")
+    }
+}
+
+/// The history record created for `tag` with the amount we asked for, if any.
+fn find_tagged<'a>(records: &'a [Value], tag: &str, amount: i64) -> Option<&'a Value> {
+    records.iter().find(|r| {
+        str_field(r, "productDetails").is_some_and(|d| d.contains(tag))
+            && r.get("toBeMinted").and_then(num) == Some(amount)
+    })
+}
+
 pub(crate) fn mint_body(
     creds: &Credentials,
     input: &ChargeInput<'_>,
@@ -242,9 +270,7 @@ pub(crate) fn mint_body(
         "expiryPeriod": minutes_until(input.expires_at).min(MAX_EXPIRY_MINUTES),
         "returnUrl": input.return_url.unwrap_or(input.snap_url),
     });
-    if let Some(d) = input.description {
-        body["productDetails"] = json!(d.chars().take(255).collect::<String>());
-    }
+    body["productDetails"] = json!(product_details(input));
     if let Some(m) = method {
         body["paymentMethod"] = json!("va");
         body["channelId"] = json!(channel_id(m).ok_or("unsupported IDRX channel")?);
@@ -327,6 +353,117 @@ async fn history_record(
         .cloned())
 }
 
+/// One page of the account's mint history, newest or oldest first (IDRX does not document which).
+async fn history_page(
+    ctx: &ProviderCtx<'_>,
+    page: u64,
+    take: u64,
+) -> Result<(Vec<Value>, u64), ProviderError> {
+    let path = format!(
+        "/transaction/user-transaction-history?transactionType=MINT&page={page}&take={take}"
+    );
+    let reply = signed(ctx, "GET", &path, None).await?;
+    if !(200..300).contains(&reply.status) {
+        return Err(api_error(&reply));
+    }
+    let records = reply
+        .json
+        .get("records")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let total = reply
+        .json
+        .get("metadata")
+        .and_then(|m| m.get("totalCount"))
+        .and_then(num)
+        .unwrap_or(0)
+        .max(0) as u64;
+    Ok((records, total))
+}
+
+const HISTORY_TAKE: u64 = 50;
+
+/// Look for the order a mint request created before its answer got lost. Checks the first page and,
+/// when the history is longer, the last one, so either sort order finds a fresh order.
+async fn find_order_by_tag(
+    ctx: &ProviderCtx<'_>,
+    input: &ChargeInput<'_>,
+) -> Result<Option<Value>, ProviderError> {
+    let tag = order_tag(input.payment_id);
+    let (first, total) = history_page(ctx, 1, HISTORY_TAKE).await?;
+    if let Some(r) = find_tagged(&first, &tag, input.amount) {
+        return Ok(Some(r.clone()));
+    }
+    let last_page = total.div_ceil(HISTORY_TAKE);
+    if last_page > 1 {
+        let (last, _) = history_page(ctx, last_page, HISTORY_TAKE).await?;
+        return Ok(find_tagged(&last, &tag, input.amount).cloned());
+    }
+    Ok(None)
+}
+
+/// The Virtual Account of an existing direct order, from IDRX's stored payload (safe to re-request).
+fn direct_output_from_payload(
+    data: &Value,
+    method: Method,
+    amount: i64,
+    merchant_order_id: &str,
+) -> Option<ChargeOutput> {
+    let account = str_field(data, "virtualAccountNo")?;
+    let total = data
+        .get("paymentAmount")
+        .or_else(|| data.get("amount"))
+        .and_then(num)
+        .filter(|t| *t > amount);
+    Some(ChargeOutput {
+        instructions: Instructions::VirtualAccount {
+            bank: method.bank().unwrap_or_default().to_string(),
+            account_number: Some(account.to_string()),
+            account_name: str_field(data, "virtualAccountName").map(str::to_string),
+            biller_code: None,
+            bill_key: None,
+        },
+        provider_ref: Some(merchant_order_id.to_string()),
+        provider_data: json!({ "kind": "direct_va" }),
+        payable_amount: total,
+    })
+}
+
+/// IDRX has no idempotency key and says not to create a new order after a 5xx: recover the
+/// payload of the order that may exist. `Ok(None)` means IDRX holds no such order.
+async fn recover_direct(
+    ctx: &ProviderCtx<'_>,
+    input: &ChargeInput<'_>,
+    method: Method,
+) -> Result<Option<ChargeOutput>, ProviderError> {
+    let Some(record) = find_order_by_tag(ctx, input).await? else {
+        return Ok(None);
+    };
+    let Some(order) = record.get("merchantOrderId").and_then(|v| {
+        v.as_str()
+            .map(str::to_string)
+            .or_else(|| num(v).map(|n| n.to_string()))
+    }) else {
+        return Ok(None);
+    };
+    let path = format!(
+        "/duitku-snap/checkout/payment-payload?merchantOrderId={}",
+        url_encode(&order)
+    );
+    let reply = signed(ctx, "GET", &path, None).await?;
+    if !(200..300).contains(&reply.status) {
+        return Err(api_error(&reply));
+    }
+    let data = reply.json.get("data").unwrap_or(&reply.json);
+    Ok(direct_output_from_payload(
+        data,
+        method,
+        input.amount,
+        &order,
+    ))
+}
+
 fn url_encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
@@ -402,7 +539,23 @@ impl ProviderAdapter for Idrx {
             .method
             .ok_or_else(|| ProviderError::Rejected("method required".into()))?;
         let body = mint_body(ctx.creds, input, Some(method)).map_err(ProviderError::Rejected)?;
-        let reply = signed(ctx, "POST", "/transaction/mint-request", Some(&body)).await?;
+        let reply = match signed(ctx, "POST", "/transaction/mint-request", Some(&body)).await {
+            Ok(r) if r.status < 500 => r,
+            // Timeout, dropped connection or 5xx: the order may exist at IDRX. Recover it
+            // instead of letting the caller create a second one.
+            outcome => {
+                let err = match outcome {
+                    Ok(r) => api_error(&r),
+                    Err(e) => e,
+                };
+                if matches!(err, ProviderError::Unavailable(_))
+                    && let Ok(Some(out)) = recover_direct(ctx, input, method).await
+                {
+                    return Ok(out);
+                }
+                return Err(err);
+            }
+        };
         if !(200..300).contains(&reply.status) {
             return Err(api_error(&reply));
         }
@@ -688,5 +841,71 @@ mod tests {
         };
         let body = mint_body(&c, &input, None).unwrap();
         assert_eq!(body["expiryPeriod"], 24 * 60);
+    }
+
+    #[test]
+    fn a_mint_whose_answer_was_lost_can_be_found_again_by_its_tag() {
+        let opts = json!({});
+        let id = Uuid::parse_str("01a21bf7-f298-71c0-9bd1-95eb988e4ba2").unwrap();
+        let mut input = ChargeInput {
+            payment_id: id,
+            order_id: "INV-1",
+            amount: 50_000,
+            expires_at: Utc::now() + chrono::Duration::hours(1),
+            description: Some("Order INV-1"),
+            customer: None,
+            items: &[],
+            return_url: None,
+            snap_url: "https://pay.example.com/snap/t",
+            provider_options: &opts,
+            method: None,
+        };
+        let details = product_details(&input);
+        assert_eq!(details, "Order INV-1 (ref:01a21bf7f29871c0)");
+        input.description = None;
+        assert_eq!(product_details(&input), "ref:01a21bf7f29871c0");
+        let long = "x".repeat(400);
+        input.description = Some(&long);
+        assert!(product_details(&input).chars().count() <= 255);
+        assert!(product_details(&input).ends_with("(ref:01a21bf7f29871c0)"));
+
+        let tag = order_tag(id);
+        let records = vec![
+            json!({ "merchantOrderId": "1", "productDetails": "Order INV-9 (ref:ffffffffffffffff)", "toBeMinted": "50000" }),
+            json!({ "merchantOrderId": "2", "productDetails": details, "toBeMinted": "49000" }),
+            json!({ "merchantOrderId": "3", "productDetails": details, "toBeMinted": "50000" }),
+        ];
+        // same tag but another amount is not our order
+        let found = find_tagged(&records, &tag, 50_000).unwrap();
+        assert_eq!(found["merchantOrderId"], "3");
+        assert!(find_tagged(&records, &tag, 10_000).is_none());
+        assert!(find_tagged(&records[..1], &tag, 50_000).is_none());
+    }
+
+    #[test]
+    fn the_stored_payload_rebuilds_the_virtual_account_instructions() {
+        let data = json!({
+            "merchantOrderId": "20260728130000",
+            "virtualAccountNo": "8680770000001234",
+            "virtualAccountName": "JOHN SMITH",
+            "paymentAmount": 54000,
+            "toBeMinted": "50000",
+            "paymentStatus": "WAITING_FOR_PAYMENT"
+        });
+        let out =
+            direct_output_from_payload(&data, Method::VaMandiri, 50_000, "20260728130000").unwrap();
+        assert_eq!(out.provider_ref.as_deref(), Some("20260728130000"));
+        assert_eq!(out.payable_amount, Some(54_000));
+        assert_eq!(
+            out.instructions,
+            Instructions::VirtualAccount {
+                bank: "mandiri".into(),
+                account_number: Some("8680770000001234".into()),
+                account_name: Some("JOHN SMITH".into()),
+                biller_code: None,
+                bill_key: None,
+            }
+        );
+        assert!(direct_output_from_payload(&json!({}), Method::VaBri, 50_000, "1").is_none());
     }
 }
