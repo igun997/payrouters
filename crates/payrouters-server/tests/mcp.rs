@@ -929,6 +929,8 @@ async fn protocol_handshake_resources_and_prompts(pool: PgPool) {
         "sync_payment",
         "retry_webhook_delivery",
         "test_webhook_integration",
+        "wait_for_payment",
+        "run_integration_selftest",
     ] {
         assert!(names.contains(&expected), "missing tool {expected}");
     }
@@ -957,7 +959,7 @@ async fn protocol_handshake_resources_and_prompts(pool: PgPool) {
             .as_array()
             .unwrap()
             .len(),
-        9
+        10
     );
     let read = app
         .rpc(
@@ -989,6 +991,7 @@ async fn protocol_handshake_resources_and_prompts(pool: PgPool) {
         "webhooks",
         "errors-and-limits",
         "sandbox",
+        "testing",
         "providers",
     ] {
         let doc = app
@@ -1010,7 +1013,7 @@ async fn protocol_handshake_resources_and_prompts(pool: PgPool) {
     let prompts = app.rpc(&c.access, "prompts/list", json!({})).await;
     assert_eq!(
         prompts.json["result"]["prompts"].as_array().unwrap().len(),
-        3
+        4
     );
     let prompt = app
         .rpc(&c.access, "prompts/get", json!({ "name": "integrate_payrouters", "arguments": { "language": "PHP", "framework": "Laravel" } }))
@@ -1626,4 +1629,277 @@ async fn oauth_cleanup_removes_expired_rows_and_idle_clients(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(tokens, 0);
+}
+
+/// A webhook endpoint written the way the docs ask: verifies the signature and its timestamp on the
+/// raw body and refuses anything else. `secret` is filled in once the product exists.
+async fn spawn_strict_receiver(secret: Arc<Mutex<String>>) -> String {
+    let app = Router::new().route(
+        "/hook",
+        post(move |headers: HeaderMap, body: String| {
+            let secret = secret.clone();
+            async move {
+                let Some(sig) = headers
+                    .get("payrouters-signature")
+                    .and_then(|v| v.to_str().ok())
+                else {
+                    return StatusCode::UNAUTHORIZED;
+                };
+                let ts: i64 = sig
+                    .strip_prefix("t=")
+                    .and_then(|r| r.split(',').next())
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or(0);
+                let expected = payrouters_server::services::outbound::signature_header(
+                    &secret.lock().unwrap(),
+                    ts,
+                    &body,
+                );
+                let fresh = (chrono::Utc::now().timestamp() - ts).abs() <= 300;
+                if fresh && expected == sig {
+                    StatusCode::OK
+                } else {
+                    StatusCode::UNAUTHORIZED
+                }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{addr}/hook")
+}
+
+async fn webhook_secret(app: &App, product_id: &str) -> String {
+    let (enc,): (String,) = sqlx::query_as("SELECT webhook_secret_enc FROM products WHERE id = $1")
+        .bind(uuid::Uuid::parse_str(product_id).unwrap())
+        .fetch_one(&app.state.pool)
+        .await
+        .unwrap();
+    app.state.cipher.decrypt_string(&enc).unwrap()
+}
+
+fn statuses(result: &Value) -> Vec<(String, String)> {
+    result["structuredContent"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["check"].as_str().unwrap().to_string(),
+                c["status"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn selftest_passes_an_endpoint_that_follows_the_docs(pool: PgPool) {
+    let app = App::new(pool).await;
+    let c = app.connect("read write").await;
+    let secret = Arc::new(Mutex::new(String::new()));
+    let url = spawn_strict_receiver(secret.clone()).await;
+    let (product_id, _) = app.product_with_keys("Shop", Some(&url)).await;
+    *secret.lock().unwrap() = webhook_secret(&app, &product_id).await;
+
+    let r = app
+        .tool(
+            &c.access,
+            "run_integration_selftest",
+            json!({ "product_id": product_id }),
+        )
+        .await;
+    assert_eq!(r["isError"], false, "{}", text_of(&r));
+    let checks = statuses(&r);
+    assert_eq!(checks.len(), 7, "{checks:?}");
+    assert!(
+        checks.iter().all(|(_, s)| s == "pass"),
+        "{checks:?}\n{}",
+        text_of(&r)
+    );
+    assert_eq!(r["structuredContent"]["ok"], true);
+    assert_eq!(r["structuredContent"]["failed"], 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn selftest_flags_an_endpoint_that_trusts_everything(pool: PgPool) {
+    let app = App::new(pool).await;
+    let c = app.connect("read write").await;
+    let (url, hits) = spawn_receiver(Arc::new(AtomicU16::new(200))).await;
+    let (product_id, _) = app.product_with_keys("Lax", Some(&url)).await;
+
+    let r = app
+        .tool(
+            &c.access,
+            "run_integration_selftest",
+            json!({ "product_id": product_id }),
+        )
+        .await;
+    let checks = statuses(&r);
+    let status_of = |name: &str| {
+        checks
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, s)| s.as_str())
+            .unwrap_or("missing")
+    };
+    assert_eq!(status_of("payment.paid delivered"), "pass");
+    assert_eq!(status_of("refuses a wrong signature"), "fail");
+    assert_eq!(status_of("refuses a missing signature"), "fail");
+    assert_eq!(status_of("refuses a stale timestamp"), "warn");
+    assert_eq!(status_of("acknowledges a repeated event"), "pass");
+    assert_eq!(r["structuredContent"]["ok"], false);
+    assert!(
+        text_of(&r).contains("Anyone who knows the URL can fake a paid event"),
+        "{}",
+        text_of(&r)
+    );
+    // 3 real deliveries + 4 probes
+    assert_eq!(hits.lock().unwrap().len(), 7);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn selftest_stops_when_nothing_answers_and_needs_a_url(pool: PgPool) {
+    let app = App::new(pool).await;
+    let c = app.connect("read write").await;
+    let (dead, _) = app
+        .product_with_keys("Dead", Some("http://127.0.0.1:1/hook"))
+        .await;
+    let r = app
+        .tool(
+            &c.access,
+            "run_integration_selftest",
+            json!({ "product_id": dead }),
+        )
+        .await;
+    assert_eq!(r["structuredContent"]["stopped_early"], true);
+    assert_eq!(r["structuredContent"]["ok"], false);
+    assert_eq!(statuses(&r).len(), 1, "probes must not repeat the error");
+
+    let (bare, _) = app.product_with_keys("Bare", None).await;
+    let r = app
+        .tool(
+            &c.access,
+            "run_integration_selftest",
+            json!({ "product_id": bare }),
+        )
+        .await;
+    assert_eq!(r["isError"], true);
+    assert!(text_of(&r).contains("no webhook_url"));
+
+    // write permission is required
+    let ro = app.connect("read").await;
+    let denied = app
+        .tool(
+            &ro.access,
+            "run_integration_selftest",
+            json!({ "product_id": dead }),
+        )
+        .await;
+    assert_eq!(denied["isError"], true);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_application_checkout_can_be_waited_for_simulated_and_confirmed(pool: PgPool) {
+    let app = App::new(pool).await;
+    let c = app.connect("read write").await;
+    let secret = Arc::new(Mutex::new(String::new()));
+    let url = spawn_strict_receiver(secret.clone()).await;
+    let (product_id, key) = app.product_with_keys("Shop", Some(&url)).await;
+    *secret.lock().unwrap() = webhook_secret(&app, &product_id).await;
+
+    // nothing yet: not an error, with advice
+    let none = app
+        .tool(
+            &c.access,
+            "wait_for_payment",
+            json!({ "product_id": product_id, "timeout_seconds": 0 }),
+        )
+        .await;
+    assert_eq!(none["isError"], false);
+    assert_eq!(none["structuredContent"]["found"], false);
+    assert!(text_of(&none).contains("Trigger the checkout"));
+
+    // MCP's own test payments are not mistaken for the application's
+    app.tool(
+        &c.access,
+        "test_webhook_integration",
+        json!({ "product_id": product_id }),
+    )
+    .await;
+    let still_none = app
+        .tool(
+            &c.access,
+            "wait_for_payment",
+            json!({ "product_id": product_id, "timeout_seconds": 0 }),
+        )
+        .await;
+    assert_eq!(still_none["structuredContent"]["found"], false);
+
+    // the application creates an order through the API with its sandbox key
+    let created = app
+        .call(
+            "POST",
+            "/v1/payments",
+            Some(&key),
+            Some(json!({ "order_id": "APP-1001", "amount": 75000, "provider": "mock", "method": "va_bca" })),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text);
+    let found = app
+        .tool(
+            &c.access,
+            "wait_for_payment",
+            json!({ "product_id": product_id, "timeout_seconds": 5 }),
+        )
+        .await;
+    assert_eq!(
+        found["structuredContent"]["found"],
+        true,
+        "{}",
+        text_of(&found)
+    );
+    assert_eq!(
+        found["structuredContent"]["payment"]["order_id"],
+        "APP-1001"
+    );
+    let payment_id = found["structuredContent"]["payment"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // the same order can be waited for by id
+    let by_order = app
+        .tool(
+            &c.access,
+            "wait_for_payment",
+            json!({ "product_id": product_id, "order_id": "APP-1001", "timeout_seconds": 0 }),
+        )
+        .await;
+    assert_eq!(by_order["structuredContent"]["found"], true);
+
+    // paying it delivers the webhook and reports the application's answer
+    let paid = app
+        .tool(
+            &c.access,
+            "simulate_payment",
+            json!({ "payment_id": payment_id, "outcome": "paid" }),
+        )
+        .await;
+    assert_eq!(paid["isError"], false, "{}", text_of(&paid));
+    assert_eq!(paid["structuredContent"]["status"], "paid");
+    assert_eq!(
+        paid["structuredContent"]["webhook"]["delivery"]["status"],
+        "delivered"
+    );
+    assert!(text_of(&paid).contains("Delivered: your endpoint answered 200"));
+
+    // a live payment of the same product stays hidden without the live permission
+    let live = app
+        .tool(
+            &c.access,
+            "wait_for_payment",
+            json!({ "product_id": product_id, "mode": "live", "timeout_seconds": 0 }),
+        )
+        .await;
+    assert_eq!(live["isError"], true);
 }

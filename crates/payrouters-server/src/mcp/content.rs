@@ -12,7 +12,7 @@ pub struct Topic {
     body: &'static str,
 }
 
-pub const TOPICS: [Topic; 9] = [
+pub const TOPICS: [Topic; 10] = [
     Topic {
         id: "overview",
         title: "PayRouters overview",
@@ -60,6 +60,12 @@ pub const TOPICS: [Topic; 9] = [
         title: "Sandbox",
         summary: "Test keys, the mock provider and simulator, going live",
         body: include_str!("docs/sandbox.md"),
+    },
+    Topic {
+        id: "testing",
+        title: "Testing an integration in sandbox",
+        summary: "Prove the application works end to end with the self-test tools",
+        body: include_str!("docs/testing.md"),
     },
     Topic {
         id: "providers",
@@ -386,12 +392,16 @@ function verify_payrouters_webhook(string $rawBody, ?string $header, string $sec
 
 // --- Prompts ------------------------------------------------------------------------------------
 
-pub const SERVER_INSTRUCTIONS: &str = "PayRouters routes IDR cash-in payments to Midtrans, Xendit and IDRX behind one API. Use these tools instead of guessing values. Start with get_integration_status: it lists the provider accounts, products, keys and the next steps. get_docs (or the payrouters://docs/* resources) explains the API; generate_code returns ready code with this deployment's base URL; create_test_payment, simulate_payment and test_webhook_integration prove an integration end to end in sandbox. Secrets (API keys, webhook secrets) are returned once by the tool that creates them: tell the user to store them in their backend's environment, never in source code. Live mode needs the live permission; without it everything works on sandbox data only.";
+pub const SERVER_INSTRUCTIONS: &str = "PayRouters routes IDR cash-in payments to Midtrans, Xendit and IDRX behind one API. Use these tools instead of guessing values. Start with get_integration_status: it lists the provider accounts, products, keys and the next steps. get_docs (or the payrouters://docs/* resources) explains the API; generate_code returns ready code with this deployment's base URL; run_integration_selftest, wait_for_payment, create_test_payment and simulate_payment prove an integration end to end in sandbox (docs topic testing). Secrets (API keys, webhook secrets) are returned once by the tool that creates them: tell the user to store them in their backend's environment, never in source code. Live mode needs the live permission; without it everything works on sandbox data only.";
 
-pub const PROMPTS: [(&str, &str); 3] = [
+pub const PROMPTS: [(&str, &str); 4] = [
     (
         "integrate_payrouters",
         "Integrate PayRouters payments into the user's application step by step, using the tools.",
+    ),
+    (
+        "self_test_integration",
+        "Test the user's running application end to end in sandbox: its checkout, its webhook endpoint and its handling of every outcome.",
     ),
     (
         "debug_payment",
@@ -417,6 +427,22 @@ pub fn integrate_prompt(language: Option<&str>, framework: Option<&str>) -> Stri
 3. Read get_docs topics create-payment and webhooks, then look at my project and write the integration code with generate_code as the reference: create a payment when an order is placed, redirect the customer to snap_url, and a webhook endpoint that verifies the signature on the raw body and marks the order paid on payment.paid (idempotent on PayRouters-Event-Id).\n\
 4. Prove it in sandbox: run create_test_payment and simulate_payment, then test_webhook_integration against my endpoint, and fix whatever it reports.\n\
 5. Finish with a short list of what I must do before going live."
+    )
+}
+
+pub fn self_test_prompt(product: Option<&str>) -> String {
+    let which = product
+        .map(|p| format!("the product \"{p}\""))
+        .unwrap_or_else(|| {
+            "my product (ask me which one if get_integration_status lists several)".to_string()
+        });
+    format!(
+        "Test my application's PayRouters integration end to end in sandbox for {which}. Use the tools, never the live mode:\n\
+1. Call get_integration_status. The product needs a sandbox key and a webhook_url that PayRouters can reach (a public https URL; for a local server start a tunnel such as cloudflared or ngrok and set it with update_product).\n\
+2. Run run_integration_selftest. It delivers signed paid, failed and expired events to my endpoint and probes a wrong signature, a missing signature, a stale timestamp and a repeated event. Fix every fail in my code (use generate_code task verify_webhook as the reference) and warn if I should, then run it again until it passes.\n\
+3. Test the checkout the way a customer does: start my application with the sandbox key (get_env_template) and provider mock, trigger a purchase in it (run its flow, or call its own create-order route), then wait_for_payment for the payment it created. Check the amount, order_id, method and return_url against what I expect.\n\
+4. simulate_payment paid on that payment. The result says what my endpoint answered. Then confirm in my application that the order is marked paid exactly once (read its database or logs), and repeat with failed and expired to see the order is not fulfilled.\n\
+5. Report what passed, what you fixed, and what I must still check by hand."
     )
 }
 

@@ -383,12 +383,13 @@ const DEFS: &[Def] = &[
     Def {
         name: "simulate_payment",
         title: "Simulate a payment outcome",
-        description: "Moves a pending mock-provider payment to paid, expired or failed through the same pipeline as a real provider (ledger, webhook to the product). Paid needs the payment to have a method.",
+        description: "Moves a pending mock-provider payment to paid, expired or failed through the same pipeline as a real provider (ledger, webhook to the product). Paid needs the payment to have a method. When the product has a webhook_url the event is delivered right away and the result reports what the application's endpoint answered (set deliver_now false to skip that). Works on payments the application created itself with a sandbox key and provider mock: find them with wait_for_payment.",
         schema: || {
             object(
                 json!({
                     "payment_id": id_prop("A pending mock payment."),
-                    "outcome": { "type": "string", "enum": ["paid", "expired", "failed"] }
+                    "outcome": { "type": "string", "enum": ["paid", "expired", "failed"] },
+                    "deliver_now": { "type": "boolean", "description": "Default true: deliver the webhook now and report the endpoint's answer." }
                 }),
                 &["payment_id", "outcome"],
             )
@@ -417,6 +418,38 @@ const DEFS: &[Def] = &[
             object(
                 json!({ "delivery_id": id_prop("The delivery.") }),
                 &["delivery_id"],
+            )
+        },
+        need: Need::Write,
+        idempotent: false,
+    },
+    Def {
+        name: "wait_for_payment",
+        title: "Wait for the application to create a payment",
+        description: "Use it while testing an application that is being integrated: after you (or the user) trigger the checkout in the running application, call this to see the payment it created through the API with its sandbox key. Waits up to timeout_seconds (default 20, max 30) for a payment on the product, newest first, ignoring the ones MCP tools created. Pass order_id to wait for one specific order. Returns the payment (status, method, instructions, snap_url, deliveries) or found: false with advice, which is not an error: trigger the checkout and call again. Then use simulate_payment to pay it (mock provider, sandbox).",
+        schema: || {
+            object(
+                json!({
+                    "product_id": id_prop("The product whose sandbox key the application uses."),
+                    "order_id": { "type": "string", "description": "Wait for this order id only." },
+                    "mode": mode_prop(),
+                    "since_seconds": { "type": "integer", "minimum": 10, "maximum": 86400, "description": "Only payments created within this many seconds, default 900." },
+                    "timeout_seconds": { "type": "integer", "minimum": 0, "maximum": 30, "description": "How long to wait, default 20." }
+                }),
+                &["product_id"],
+            )
+        },
+        need: Need::Read,
+        idempotent: true,
+    },
+    Def {
+        name: "run_integration_selftest",
+        title: "Self-test an application's webhook endpoint in sandbox",
+        description: "Sandbox only. Runs a full check against the product's webhook endpoint (the application being integrated): delivers real signed payment.paid, payment.failed and payment.expired events from mock payments, then sends probes: a wrong signature, a missing signature and a stale timestamp (a correct endpoint refuses all three) and the same event twice (it must answer 2xx both times; making the second one a no-op is the application's job, so check its idempotency in code). Returns a checklist with pass, warn or fail per check and what to fix. Needs a webhook_url on the product. The probes carry a test payment with order_id starting MCP-TEST-, never real data.",
+        schema: || {
+            object(
+                json!({ "product_id": id_prop("The product to test.") }),
+                &["product_id"],
             )
         },
         need: Need::Write,
@@ -515,6 +548,8 @@ async fn dispatch(ctx: &Ctx, name: &str, args: Value) -> TResult {
         "sync_payment" => sync_payment(ctx, &args).await,
         "retry_webhook_delivery" => retry_delivery(ctx, &args).await,
         "test_webhook_integration" => test_webhook(ctx, &args).await,
+        "wait_for_payment" => wait_for_payment(ctx, &args).await,
+        "run_integration_selftest" => integration_selftest(ctx, &args).await,
         other => fail(format!("Unknown tool: {other}")),
     }
 }
@@ -1218,14 +1253,30 @@ async fn simulate_payment(ctx: &Ctx, args: &Value) -> TResult {
         ApiJson(parse(json!({ "outcome": outcome.as_str() }))?),
     )
     .await?;
-    let v = to_value(&v)?;
-    out(
-        format!(
-            "Payment is now {}.",
-            v.get("status").and_then(Value::as_str).unwrap_or("?")
-        ),
-        v,
-    )
+    let mut v = to_value(&v)?;
+    let mut summary = format!(
+        "Payment is now {}.",
+        v.get("status").and_then(Value::as_str).unwrap_or("?")
+    );
+    if args.get("deliver_now").and_then(Value::as_bool) != Some(false) {
+        let url: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT pr.webhook_url FROM payments p JOIN products pr ON pr.id = p.product_id WHERE p.id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&ctx.state.pool)
+        .await?;
+        if let Some((Some(webhook_url),)) = url
+            && let Some(d) = deliver_now(&ctx.state, id).await?
+        {
+            let verdict = delivery_verdict(&d, &webhook_url);
+            summary = format!("{summary} {verdict}");
+            v["webhook"] = json!({
+                "delivery": compact_delivery(&to_value(&d)?),
+                "verdict": verdict,
+            });
+        }
+    }
+    out(summary, v)
 }
 
 async fn sync_payment(ctx: &Ctx, args: &Value) -> TResult {
@@ -1279,6 +1330,34 @@ async fn test_webhook(ctx: &Ctx, args: &Value) -> TResult {
         ));
     };
 
+    let (payment_id, order_id) = mock_payment(st, product_id, "paid").await?;
+    let Some(d) = deliver_now(st, payment_id).await? else {
+        return fail(
+            "The payment was marked paid but no webhook delivery was queued. Check that the product has a webhook_url.",
+        );
+    };
+    let verdict = delivery_verdict(&d, &webhook_url);
+    out(
+        verdict.clone(),
+        json!({
+            "product": name,
+            "webhook_url": webhook_url,
+            "payment_id": payment_id,
+            "order_id": order_id,
+            "delivery": compact_delivery(&to_value(&d)?),
+            "verdict": verdict,
+        }),
+    )
+}
+
+// --- Self-testing -------------------------------------------------------------------------------
+
+/// A sandbox mock payment for `product_id`, marked `outcome`. Returns its id and order id.
+async fn mock_payment(
+    st: &crate::state::AppState,
+    product_id: Uuid,
+    outcome: &str,
+) -> Result<(Uuid, String), ToolError> {
     let order_id = format!("MCP-TEST-{}", random_hex::<3>().to_uppercase());
     let create: AdminCreate = parse(json!({
         "product_id": product_id,
@@ -1294,10 +1373,18 @@ async fn test_webhook(ctx: &Ctx, args: &Value) -> TResult {
     let _ = payments::simulate(
         State(st.clone()),
         Path(payment_id),
-        ApiJson(parse(json!({ "outcome": "paid" }))?),
+        ApiJson(parse(json!({ "outcome": outcome }))?),
     )
     .await?;
-    // Deliver now instead of waiting for the background loop, then give a concurrent attempt a moment.
+    Ok((payment_id, order_id))
+}
+
+/// Deliver queued webhooks now instead of waiting for the background loop, then wait a moment for
+/// the first attempt on the newest delivery of `payment_id`.
+async fn deliver_now(
+    st: &crate::state::AppState,
+    payment_id: Uuid,
+) -> Result<Option<DeliveryRow>, ToolError> {
     let _ = outbound::run_once(st).await;
     let mut delivery: Option<DeliveryRow> = None;
     for _ in 0..24 {
@@ -1315,19 +1402,19 @@ async fn test_webhook(ctx: &Ctx, args: &Value) -> TResult {
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
-    let Some(d) = delivery else {
-        return fail(
-            "The payment was marked paid but no webhook delivery was queued. Check that the product has a webhook_url.",
-        );
-    };
+    Ok(delivery)
+}
 
-    let verdict = match (
+/// What a delivery's outcome means for the application's endpoint, with the fix.
+fn delivery_verdict(d: &DeliveryRow, webhook_url: &str) -> String {
+    match (
         d.status.as_str(),
         d.last_status_code,
         d.last_error.as_deref(),
     ) {
         ("delivered", Some(code), _) => format!(
-            "Delivered: your endpoint answered {code}. The signed payment.paid event arrived. A 2xx does not prove the signature was checked: make sure the endpoint verifies PayRouters-Signature on the raw body (generate_code task verify_webhook) and ignores a repeated PayRouters-Event-Id."
+            "Delivered: your endpoint answered {code}. The signed {} event arrived. A 2xx does not prove the signature was checked: make sure the endpoint verifies PayRouters-Signature on the raw body (generate_code task verify_webhook) and ignores a repeated PayRouters-Event-Id; run_integration_selftest checks that.",
+            d.event_type
         ),
         (_, Some(code), _) => format!(
             "Your endpoint answered HTTP {code}, which is not 2xx, so PayRouters will retry. Fix the endpoint (a 401 or 400 often means the signature check rejected the request or the body was parsed before verifying), then call retry_webhook_delivery."
@@ -1337,16 +1424,262 @@ async fn test_webhook(ctx: &Ctx, args: &Value) -> TResult {
         ),
         _ => "The delivery is still queued; call list_webhook_deliveries in a few seconds."
             .to_string(),
+    }
+}
+
+async fn wait_for_payment(ctx: &Ctx, args: &Value) -> TResult {
+    let product_id = uuid_arg(args, "product_id")?;
+    let mode = mode_of(ctx, args)?;
+    let order_id = str_arg(args, "order_id");
+    let since = args
+        .get("since_seconds")
+        .and_then(Value::as_i64)
+        .unwrap_or(900)
+        .clamp(10, 86_400);
+    let timeout = args
+        .get("timeout_seconds")
+        .and_then(Value::as_u64)
+        .unwrap_or(20)
+        .min(30);
+    let exists: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM products WHERE id = $1 AND archived_at IS NULL")
+            .bind(product_id)
+            .fetch_optional(&ctx.state.pool)
+            .await?;
+    let Some((name,)) = exists else {
+        return fail("Product not found.");
     };
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout);
+    loop {
+        let found: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM payments
+             WHERE product_id = $1 AND mode = $2
+               AND created_at >= now() - make_interval(secs => $3)
+               AND ($4::text IS NULL OR order_id = $4)
+               AND ($4::text IS NOT NULL OR order_id NOT LIKE 'MCP-TEST-%')
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(product_id)
+        .bind(mode.as_str())
+        .bind(since as f64)
+        .bind(order_id)
+        .fetch_optional(&ctx.state.pool)
+        .await?;
+        if let Some((id,)) = found {
+            let detail = get_payment(ctx, &json!({ "payment_id": id })).await?;
+            let mut data = detail.data;
+            data["found"] = json!(true);
+            let next = if mode == Mode::Sandbox {
+                "Next: simulate_payment with outcome paid (mock provider with a method) delivers the webhook to the application and reports its answer."
+            } else {
+                "This is a live payment: it is paid only by a real customer."
+            };
+            return out(
+                format!("Found the payment the application created for \"{name}\". {next}"),
+                data,
+            );
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return out(
+                format!(
+                    "No payment from the application yet on \"{name}\" in {} mode. Trigger the checkout in the running application with the product's sandbox key (PAYROUTERS_API_KEY, base URL from get_env_template), then call wait_for_payment again. Use provider mock with a method so simulate_payment can pay it.",
+                    mode.as_str()
+                ),
+                json!({ "found": false, "product": name, "mode": mode.as_str() }),
+            );
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+struct Probe {
+    status: Option<u16>,
+    error: Option<String>,
+}
+
+async fn send_probe(
+    st: &crate::state::AppState,
+    url: &str,
+    body: &str,
+    event_id: &str,
+    signature: Option<String>,
+) -> Probe {
+    let mut req = st
+        .hooks
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("PayRouters-Event-Id", event_id)
+        .body(body.to_string());
+    if let Some(sig) = signature {
+        req = req.header("PayRouters-Signature", sig);
+    }
+    match req.send().await {
+        Ok(r) => Probe {
+            status: Some(r.status().as_u16()),
+            error: None,
+        },
+        Err(e) => Probe {
+            status: None,
+            error: Some(e.without_url().to_string()),
+        },
+    }
+}
+
+fn check(name: &str, status: &str, detail: impl Into<String>) -> Value {
+    json!({ "check": name, "status": status, "detail": detail.into() })
+}
+
+/// A probe that a correct endpoint must refuse: any non-2xx is a pass.
+fn must_refuse(name: &str, p: &Probe, what: &str, fail_status: &str, risk: &str) -> Value {
+    match (p.status, &p.error) {
+        (Some(code), _) if (200..300).contains(&code) => check(
+            name,
+            fail_status,
+            format!("The endpoint answered {code} to {what}. {risk}"),
+        ),
+        (Some(code), _) => check(name, "pass", format!("Refused {what} with HTTP {code}.")),
+        (None, e) => check(
+            name,
+            "skipped",
+            format!("No answer: {}", e.as_deref().unwrap_or("unknown error")),
+        ),
+    }
+}
+
+async fn integration_selftest(ctx: &Ctx, args: &Value) -> TResult {
+    let product_id = uuid_arg(args, "product_id")?;
+    let st = &ctx.state;
+    let row: Option<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT name, webhook_url, webhook_secret_enc FROM products WHERE id = $1 AND archived_at IS NULL",
+    )
+    .bind(product_id)
+    .fetch_optional(&st.pool)
+    .await?;
+    let Some((name, webhook_url, secret_enc)) = row else {
+        return fail("Product not found.");
+    };
+    let Some(webhook_url) = webhook_url else {
+        return fail(format!(
+            "Product \"{name}\" has no webhook_url. Set one with update_product first."
+        ));
+    };
+    let secret = st
+        .cipher
+        .decrypt_string(&secret_enc)
+        .map_err(|_| ToolError("Could not read the product's webhook secret.".into()))?;
+
+    let mut checks: Vec<Value> = Vec::new();
+    let mut paid_event: Option<(String, String)> = None; // (event id, raw body)
+    for (outcome, event) in [
+        ("paid", "payment.paid"),
+        ("failed", "payment.failed"),
+        ("expired", "payment.expired"),
+    ] {
+        let label = format!("{event} delivered");
+        let (payment_id, _) = mock_payment(st, product_id, outcome).await?;
+        match deliver_now(st, payment_id).await? {
+            None => checks.push(check(&label, "fail", "No delivery was queued.")),
+            Some(d) => {
+                let delivered = d.status == "delivered";
+                checks.push(check(
+                    &label,
+                    if delivered { "pass" } else { "fail" },
+                    delivery_verdict(&d, &webhook_url),
+                ));
+                if outcome == "paid" {
+                    if delivered {
+                        let body = serde_json::to_string(&d.payload).unwrap_or_default();
+                        paid_event = Some((d.event_id.clone(), body));
+                    } else if d.last_status_code.is_none() {
+                        // Nothing answered: the probes would only repeat the same error.
+                        return selftest_report(&name, &webhook_url, checks, true);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some((event_id, body)) = paid_event {
+        let now = chrono::Utc::now().timestamp();
+        let forged = format!("t={now},v1={}", "0".repeat(64));
+        let stale = outbound::signature_header(&secret, now - 3600, &body);
+        let fresh = outbound::signature_header(&secret, now, &body);
+        let (bad, missing, old, twice) = tokio::join!(
+            send_probe(st, &webhook_url, &body, &event_id, Some(forged)),
+            send_probe(st, &webhook_url, &body, &event_id, None),
+            send_probe(st, &webhook_url, &body, &event_id, Some(stale)),
+            send_probe(st, &webhook_url, &body, &event_id, Some(fresh)),
+        );
+        checks.push(must_refuse(
+            "refuses a wrong signature",
+            &bad,
+            "an event with a wrong signature",
+            "fail",
+            "Anyone who knows the URL can fake a paid event. Verify PayRouters-Signature on the raw body with the product's webhook secret (generate_code task verify_webhook) and answer 401 on a mismatch.",
+        ));
+        checks.push(must_refuse(
+            "refuses a missing signature",
+            &missing,
+            "an event without a signature",
+            "fail",
+            "The endpoint does not require the signature header. Reject requests without it.",
+        ));
+        checks.push(must_refuse(
+            "refuses a stale timestamp",
+            &old,
+            "a correctly signed event dated an hour ago",
+            "warn",
+            "Without a timestamp tolerance (reject more than 300 seconds from now) a captured request can be replayed later.",
+        ));
+        checks.push(match (twice.status, &twice.error) {
+            (Some(code), _) if (200..300).contains(&code) => check(
+                "acknowledges a repeated event",
+                "pass",
+                format!("The same event id answered {code} again. Make sure the second delivery changes nothing (ignore an already handled PayRouters-Event-Id): that part only the application's code can show."),
+            ),
+            (Some(code), _) => check(
+                "acknowledges a repeated event",
+                "warn",
+                format!("The repeated event answered HTTP {code}. Delivery is at least once, so a duplicate must be acknowledged with 2xx and ignored, not refused; otherwise PayRouters keeps retrying."),
+            ),
+            (None, e) => check(
+                "acknowledges a repeated event",
+                "skipped",
+                format!("No answer: {}", e.as_deref().unwrap_or("unknown error")),
+            ),
+        });
+    }
+    selftest_report(&name, &webhook_url, checks, false)
+}
+
+fn selftest_report(
+    name: &str,
+    webhook_url: &str,
+    checks: Vec<Value>,
+    stopped_early: bool,
+) -> TResult {
+    let count = |s: &str| checks.iter().filter(|c| c["status"] == s).count();
+    let (pass, warn, failed) = (count("pass"), count("warn"), count("fail"));
+    let ok = failed == 0 && !stopped_early;
+    let mut summary = format!(
+        "Self-test of \"{name}\" ({webhook_url}): {pass} passed, {warn} warnings, {failed} failed."
+    );
+    if stopped_early {
+        summary.push_str(" Stopped early: the endpoint did not answer at all, fix that first.");
+    } else if ok && warn == 0 {
+        summary.push_str(" The endpoint handles every scenario.");
+    }
     out(
-        verdict.clone(),
+        summary,
         json!({
             "product": name,
             "webhook_url": webhook_url,
-            "payment_id": payment_id,
-            "order_id": order_id,
-            "delivery": compact_delivery(&to_value(&d)?),
-            "verdict": verdict,
+            "ok": ok,
+            "stopped_early": stopped_early,
+            "passed": pass,
+            "warnings": warn,
+            "failed": failed,
+            "checks": checks,
         }),
     )
 }

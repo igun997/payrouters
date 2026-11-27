@@ -157,8 +157,8 @@
 				<Pill>{scopeLabels.write}</Pill>
 				<p class="text-body text-foreground">
 					Create and edit products, rotate webhook secrets, create and revoke API keys, create test
-					payments, simulate, sync and retry deliveries. On by default; the user can untick it at
-					consent.
+					payments, simulate, sync and retry deliveries, and self-test your app's checkout and
+					webhook endpoint in sandbox. On by default; the user can untick it at consent.
 				</p>
 			</li>
 			<li class="flex flex-col gap-1">

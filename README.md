@@ -111,7 +111,7 @@ PayRouters is also an MCP server with OAuth, so an assistant can set an integrat
 claude mcp add --transport http payrouters https://pay.example.com/mcp
 ```
 
-The client opens your browser at the consent screen; the signed-in dashboard session approves it (read, make changes, and optionally live mode, which is off by default). Then the assistant can read what is configured (`get_integration_status` lists the next steps), create a product and a sandbox key, generate code with the right base URL, create a test payment and prove that your webhook endpoint answers (`test_webhook_integration`). Dashboard → **Integrations** has the server URL, a snippet for each client and the list of connected apps with Revoke. Details, scopes and the tool list: `docs/mcp.md`.
+The client opens your browser at the consent screen; the signed-in dashboard session approves it (read, make changes, and optionally live mode, which is off by default). Then the assistant can read what is configured (`get_integration_status` lists the next steps), create a product and a sandbox key, generate code with the right base URL, create a test payment and test your running application in sandbox: `run_integration_selftest` checks that your webhook endpoint verifies signatures, refuses forged and stale requests and handles paid, failed, expired and repeated events, and `wait_for_payment` plus `simulate_payment` follow a purchase made in your own app from checkout to paid webhook. Dashboard → **Integrations** has the server URL, a snippet for each client and the list of connected apps with Revoke. Details, scopes and the tool list: `docs/mcp.md`.
 
 ## Deploying to a VPS
 

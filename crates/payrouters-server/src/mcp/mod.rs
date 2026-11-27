@@ -293,6 +293,9 @@ fn prompts() -> Vec<Value> {
                     { "name": "language", "description": "Programming language of the application, e.g. TypeScript, Python, PHP.", "required": false },
                     { "name": "framework", "description": "Framework, e.g. Next.js, Laravel, Django, Express.", "required": false }
                 ]),
+                "self_test_integration" => json!([
+                    { "name": "product", "description": "Name of the product to test, if there are several.", "required": false }
+                ]),
                 "debug_payment" => json!([
                     { "name": "payment_id", "description": "The PayRouters payment id.", "required": false },
                     { "name": "order_id", "description": "The order id, if the payment id is not known.", "required": false }
@@ -321,6 +324,10 @@ fn get_prompt(params: &Value) -> RpcResult {
         "integrate_payrouters" => (
             "Integrate PayRouters payments step by step",
             content::integrate_prompt(arg("language"), arg("framework")),
+        ),
+        "self_test_integration" => (
+            "Test the application end to end in sandbox",
+            content::self_test_prompt(arg("product")),
         ),
         "debug_payment" => (
             "Find out why a payment is not paid or its webhook did not arrive",

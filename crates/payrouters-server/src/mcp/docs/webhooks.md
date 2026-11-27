@@ -27,4 +27,4 @@ When a payment reaches a terminal status PayRouters sends `POST <product.webhook
 - Answer with any `2xx` within 10 seconds. Redirects are not followed.
 - Anything else (or a timeout) is retried after 10 s, 1 m, 5 m, 30 m, 2 h, 6 h, 12 h and 24 h, then marked `failed`; a failed delivery can be retried with `retry_webhook_delivery` or from the dashboard.
 - Delivery is at least once: ignore an event whose `PayRouters-Event-Id` you already handled.
-- Check what happened with `list_webhook_deliveries` (status, attempts, last status code, last error); `test_webhook_integration` runs the whole loop against your endpoint.
+- Check what happened with `list_webhook_deliveries` (status, attempts, last status code, last error); `run_integration_selftest` checks your endpoint against every scenario.

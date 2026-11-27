@@ -13,7 +13,7 @@ PayRouters is one API in front of Midtrans, Xendit and IDRX for **cash-in** paym
 2. Your backend calls `POST {{base_url}}/v1/payments` with `Authorization: Bearer prk_test_...` (see `create-payment`).
 3. Send the customer to `snap_url` (the hosted page) or show `instructions` yourself.
 4. Your webhook endpoint verifies `PayRouters-Signature` with the webhook secret and marks the order paid on `payment.paid` (see `webhooks`).
-5. Test with the `mock` provider: `create_test_payment` then `simulate_payment`, or `test_webhook_integration` for the whole loop in one call.
+5. Test with the `mock` provider: `run_integration_selftest` checks the webhook endpoint in one call; for the checkout run the application, `wait_for_payment`, then `simulate_payment` (topic `testing`).
 
 Environment variables for the product's backend:
 
