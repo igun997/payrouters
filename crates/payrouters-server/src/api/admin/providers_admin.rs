@@ -74,7 +74,7 @@ fn view(state: &AppState, rec: &AccountRecord) -> AccountView {
     }
 }
 
-async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
+pub(crate) async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
     let rows: Vec<AccountRow> =
         sqlx::query_as("SELECT * FROM provider_accounts ORDER BY provider, mode")
             .fetch_all(&state.pool)

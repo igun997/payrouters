@@ -40,11 +40,16 @@ fn truncate_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-fn customer_details(input: &ChargeInput<'_>) -> Option<Value> {
+/// Midtrans: BCA virtual accounts accept at most 30 characters in a customer name.
+const BCA_NAME_MAX: usize = 30;
+/// Dynamic QRIS and Snap tokens live at most 7 days; a longer expiry is rejected or ignored.
+const MAX_EXPIRY_MINUTES: i64 = 7 * 24 * 60;
+
+fn customer_details(input: &ChargeInput<'_>, name_max: usize) -> Option<Value> {
     let c = input.customer?;
     let mut v = serde_json::Map::new();
     if let Some(n) = &c.name {
-        v.insert("first_name".into(), json!(truncate_chars(n, 255)));
+        v.insert("first_name".into(), json!(truncate_chars(n, name_max)));
     }
     if let Some(e) = &c.email {
         v.insert("email".into(), json!(e));
@@ -76,13 +81,13 @@ fn item_details(input: &ChargeInput<'_>) -> Option<Value> {
     ))
 }
 
-fn common_body(input: &ChargeInput<'_>) -> serde_json::Map<String, Value> {
+fn common_body(input: &ChargeInput<'_>, name_max: usize) -> serde_json::Map<String, Value> {
     let mut body = serde_json::Map::new();
     body.insert(
         "transaction_details".into(),
         json!({ "order_id": input.payment_id.to_string(), "gross_amount": input.amount }),
     );
-    if let Some(c) = customer_details(input) {
+    if let Some(c) = customer_details(input, name_max) {
         body.insert("customer_details".into(), c);
     }
     if let Some(i) = item_details(input) {
@@ -92,10 +97,19 @@ fn common_body(input: &ChargeInput<'_>) -> serde_json::Map<String, Value> {
 }
 
 pub(crate) fn core_charge_body(input: &ChargeInput<'_>, method: Method) -> Value {
-    let mut body = common_body(input);
+    let name_max = if method == Method::VaBca {
+        BCA_NAME_MAX
+    } else {
+        255
+    };
+    let mut body = common_body(input, name_max);
+    let minutes = match method {
+        Method::Qris => minutes_until(input.expires_at).min(MAX_EXPIRY_MINUTES),
+        _ => minutes_until(input.expires_at),
+    };
     body.insert(
         "custom_expiry".into(),
-        json!({ "expiry_duration": minutes_until(input.expires_at), "unit": "minute" }),
+        json!({ "expiry_duration": minutes, "unit": "minute" }),
     );
     match method {
         Method::Qris => {
@@ -121,10 +135,11 @@ pub(crate) fn core_charge_body(input: &ChargeInput<'_>, method: Method) -> Value
 }
 
 pub(crate) fn snap_body(input: &ChargeInput<'_>) -> Value {
-    let mut body = common_body(input);
+    // The hosted page may end up on a BCA virtual account, so use its stricter name limit.
+    let mut body = common_body(input, BCA_NAME_MAX);
     body.insert(
         "expiry".into(),
-        json!({ "unit": "minutes", "duration": minutes_until(input.expires_at) }),
+        json!({ "unit": "minutes", "duration": minutes_until(input.expires_at).min(MAX_EXPIRY_MINUTES) }),
     );
     if let Some(url) = input.return_url {
         body.insert("callbacks".into(), json!({ "finish": url }));
@@ -135,18 +150,23 @@ pub(crate) fn snap_body(input: &ChargeInput<'_>) -> Value {
 pub(crate) fn parse_instructions(method: Method, v: &Value) -> Option<Instructions> {
     match method {
         Method::Qris => {
-            let qr_string = str_field(v, "qr_string")?.to_string();
-            let qr_image_url = v
-                .get("actions")
-                .and_then(Value::as_array)
-                .and_then(|a| {
-                    a.iter()
-                        .find(|x| str_field(x, "name") == Some("generate-qr-code"))
-                })
-                .and_then(|x| str_field(x, "url"))
-                .map(str::to_string);
+            // The QR text is not part of every QRIS response; the image URL in `actions` always is.
+            // Without the text the Snap page shows Midtrans' own image.
+            let action_url = |name: &str| {
+                v.get("actions")
+                    .and_then(Value::as_array)
+                    .and_then(|a| a.iter().find(|x| str_field(x, "name") == Some(name)))
+                    .and_then(|x| str_field(x, "url"))
+                    .map(str::to_string)
+            };
+            let qr_image_url =
+                action_url("generate-qr-code").or_else(|| action_url("generate-qr-code-v2"));
+            let qr_string = str_field(v, "qr_string").map(str::to_string);
+            if qr_string.is_none() && qr_image_url.is_none() {
+                return None;
+            }
             Some(Instructions::Qris {
-                qr_string,
+                qr_string: qr_string.unwrap_or_default(),
                 qr_image_url,
             })
         }
@@ -198,7 +218,11 @@ pub(crate) fn map_status(
             Some("deny") => Some(PaymentStatus::Failed),
             _ => Some(PaymentStatus::Paid),
         },
-        "settlement" => Some(PaymentStatus::Paid),
+        // Midtrans: when fraud_status is present it must be accept before an order is fulfilled.
+        "settlement" => match fraud_status {
+            Some("deny") => Some(PaymentStatus::Failed),
+            _ => Some(PaymentStatus::Paid),
+        },
         "pending" => Some(PaymentStatus::Pending),
         "deny" | "failure" => Some(PaymentStatus::Failed),
         "cancel" => Some(PaymentStatus::Cancelled),
@@ -262,12 +286,21 @@ pub(crate) fn status_from_payload(v: &Value) -> Option<StatusUpdate> {
     Some(u)
 }
 
+/// A signed field as Midtrans wrote it: strings are used verbatim, a bare number as printed.
+fn signed_field(v: &Value, key: &str) -> Option<String> {
+    match v.get(key)? {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
 pub(crate) fn expected_signature(v: &Value, server_key: &str) -> Option<String> {
     Some(sha512_hex(format!(
         "{}{}{}{}",
-        str_field(v, "order_id")?,
-        str_field(v, "status_code")?,
-        str_field(v, "gross_amount")?,
+        signed_field(v, "order_id")?,
+        signed_field(v, "status_code")?,
+        signed_field(v, "gross_amount")?,
         server_key
     )))
 }
@@ -298,6 +331,11 @@ fn check_reply(reply: &HttpReply) -> Result<(), ProviderError> {
             detail = format!("{detail}: {}", joined.join("; "));
         }
     }
+    if code == 403 {
+        detail = format!(
+            "{detail} (the server key is missing a permission: charges need Core API Write, Snap needs Snap Checkout Write, status checks need a Read permission; see Settings > Access Keys)"
+        );
+    }
     let mut r = HttpReply {
         status: code,
         json: reply.json.clone(),
@@ -316,13 +354,24 @@ impl ProviderAdapter for Midtrans {
             provider: Provider::Midtrans,
             supports_sandbox: true,
             supports_provider_checkout: true,
-            credential_fields: vec![CredentialField {
-                key: "server_key",
-                label: "Server key",
-                secret: true,
-                required: true,
-                placeholder: "SB-Mid-server-…",
-            }],
+            credential_fields: vec![
+                CredentialField {
+                    key: "server_key",
+                    label: "Server key",
+                    secret: true,
+                    required: true,
+                    placeholder: "SB-Mid-server-…",
+                },
+                // Since 28 Oct 2026 Midtrans signs notifications with this key, not the server key.
+                // Merchants who integrated earlier have the same value in both until they rotate.
+                CredentialField {
+                    key: "signature_secret_key",
+                    label: "Signature secret key",
+                    secret: true,
+                    required: false,
+                    placeholder: "Access Keys > Signature Secret Key",
+                },
+            ],
             methods: METHODS.to_vec(),
         }
     }
@@ -426,15 +475,30 @@ impl ProviderAdapter for Midtrans {
     ) -> Result<ParsedWebhook, WebhookError> {
         let v: Value = serde_json::from_slice(body)
             .map_err(|e| WebhookError::Malformed(format!("body is not JSON: {e}")))?;
-        let key = ctx
-            .creds
-            .get("server_key")
-            .ok_or_else(|| WebhookError::Unauthorized("server_key not configured".into()))?;
-        let expected = expected_signature(&v, key)
-            .ok_or_else(|| WebhookError::Unauthorized("missing signature fields".into()))?;
+        // The Signature Secret Key signs notifications. The server key is accepted too: it was the
+        // signing key before 28 Oct 2026 and still is for merchants who never rotated either key.
+        let keys: Vec<&str> = ["signature_secret_key", "server_key"]
+            .into_iter()
+            .filter_map(|k| ctx.creds.get(k))
+            .collect();
+        if keys.is_empty() {
+            return Err(WebhookError::Unauthorized(
+                "no signature key configured for this account".into(),
+            ));
+        }
         let given = str_field(&v, "signature_key").unwrap_or_default();
-        if !secure_eq(&expected, given) {
-            return Err(WebhookError::Unauthorized("signature_key mismatch".into()));
+        let authentic = keys.iter().any(|key| {
+            expected_signature(&v, key).is_some_and(|expected| secure_eq(&expected, given))
+        });
+        if expected_signature(&v, keys[0]).is_none() {
+            return Err(WebhookError::Unauthorized(
+                "missing signature fields".into(),
+            ));
+        }
+        if !authentic {
+            return Err(WebhookError::Unauthorized(
+                "signature_key mismatch: Midtrans signs notifications with the Signature Secret Key (Settings > Access Keys); add it to this provider account".into(),
+            ));
         }
         let order_id = str_field(&v, "order_id").unwrap_or_default();
         let lookup = match Uuid::parse_str(order_id) {
@@ -462,9 +526,12 @@ impl ProviderAdapter for Midtrans {
         let code = body_status_code(&reply.json).unwrap_or(reply.status);
         match code {
             401 | 403 => Err(ProviderError::Rejected(
-                "Midtrans rejected the server key".into(),
+                "Midtrans rejected the server key (wrong key, revoked or expired, or without a Read permission)".into(),
             )),
-            404 | 200 => Ok(format!("Authenticated against Midtrans {}", ctx.mode)),
+            404 | 200 => Ok(format!(
+                "Authenticated against Midtrans {}. This checks that the key is valid, not that it has Write permission for charges.",
+                ctx.mode
+            )),
             other => Err(ProviderError::Unavailable(format!(
                 "unexpected Midtrans status {other}"
             ))),
@@ -594,5 +661,102 @@ mod tests {
         assert_eq!(u.method, Some(Method::VaBca));
         assert_eq!(u.paid_at.unwrap().to_rfc3339(), "2026-11-26T10:00:00+00:00");
         assert_eq!(u.provider_ref.as_deref(), Some("tx-1"));
+    }
+
+    #[test]
+    fn bca_names_and_long_expiries_are_clamped_to_what_midtrans_accepts() {
+        let opts = json!({});
+        let customer = Customer {
+            name: Some("N".repeat(60)),
+            email: None,
+            phone: None,
+        };
+        let mut i = input(Some(&customer), &[], &opts);
+        i.expires_at = Utc::now() + chrono::Duration::days(30);
+
+        let bca = core_charge_body(&i, Method::VaBca);
+        assert_eq!(
+            bca["customer_details"]["first_name"]
+                .as_str()
+                .unwrap()
+                .len(),
+            30
+        );
+        let bni = core_charge_body(&i, Method::VaBni);
+        assert_eq!(
+            bni["customer_details"]["first_name"]
+                .as_str()
+                .unwrap()
+                .len(),
+            60
+        );
+        // bank transfers may live long, dynamic QRIS and Snap tokens at most 7 days
+        assert!(bni["custom_expiry"]["expiry_duration"].as_i64().unwrap() > 7 * 24 * 60);
+        let qris = core_charge_body(&i, Method::Qris);
+        assert_eq!(qris["custom_expiry"]["expiry_duration"], 7 * 24 * 60);
+        assert_eq!(snap_body(&i)["expiry"]["duration"], 7 * 24 * 60);
+        assert_eq!(
+            snap_body(&i)["customer_details"]["first_name"]
+                .as_str()
+                .unwrap()
+                .len(),
+            30
+        );
+    }
+
+    #[test]
+    fn qris_instructions_survive_a_response_without_the_qr_text() {
+        let image_only = json!({ "actions": [
+            { "name": "generate-qr-code-v2", "url": "https://q/v2.png" },
+            { "name": "deeplink-redirect", "url": "https://q/app" }
+        ] });
+        assert_eq!(
+            parse_instructions(Method::Qris, &image_only),
+            Some(Instructions::Qris {
+                qr_string: String::new(),
+                qr_image_url: Some("https://q/v2.png".into())
+            })
+        );
+        // the original image wins over the ASPI one when both are listed
+        let both = json!({ "qr_string": "0002", "actions": [
+            { "name": "generate-qr-code-v2", "url": "https://q/v2.png" },
+            { "name": "generate-qr-code", "url": "https://q/v1.png" }
+        ] });
+        assert_eq!(
+            parse_instructions(Method::Qris, &both),
+            Some(Instructions::Qris {
+                qr_string: "0002".into(),
+                qr_image_url: Some("https://q/v1.png".into())
+            })
+        );
+        assert_eq!(parse_instructions(Method::Qris, &json!({})), None);
+    }
+
+    #[test]
+    fn denied_fraud_status_is_never_a_paid_settlement() {
+        assert_eq!(
+            map_status("settlement", Some("accept")),
+            Some(PaymentStatus::Paid)
+        );
+        assert_eq!(map_status("settlement", None), Some(PaymentStatus::Paid));
+        assert_eq!(
+            map_status("settlement", Some("deny")),
+            Some(PaymentStatus::Failed)
+        );
+        assert_eq!(
+            map_status("capture", Some("challenge")),
+            Some(PaymentStatus::Pending)
+        );
+    }
+
+    #[test]
+    fn signature_fields_may_arrive_as_numbers() {
+        let text = json!({ "order_id": "o-1", "status_code": "200", "gross_amount": "100.00" });
+        let numeric = json!({ "order_id": "o-1", "status_code": 200, "gross_amount": "100.00" });
+        assert_eq!(
+            expected_signature(&text, "k"),
+            expected_signature(&numeric, "k")
+        );
+        assert!(expected_signature(&json!({ "order_id": "o-1" }), "k").is_none());
     }
 }

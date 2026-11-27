@@ -29,6 +29,8 @@ pub const MAX_KEYS: usize = 100_000;
 pub const UNKNOWN_CLIENT: &str = "unknown";
 pub const ADMIN_FAIL: &str = "admin-fail";
 pub const API_KEY_FAIL: &str = "api-key-fail";
+/// Invalid MCP access tokens and failed OAuth token exchanges share one lockout.
+pub const OAUTH_FAIL: &str = "oauth-fail";
 
 const MINUTE: Duration = Duration::from_secs(60);
 const CLEANUP_EVERY: Duration = Duration::from_secs(60);
@@ -233,7 +235,15 @@ fn route_limits(rate: &RateConfig, method: &Method, path: &str) -> Vec<(&'static
         out
     } else if is_under(path, "/hooks") {
         vec![("hooks", rate.hooks_per_min)]
-    } else if is_under(path, "/v1") || is_under(path, "/admin") || path == "/healthz" {
+    } else if (is_under(path, "/oauth") && path != "/oauth/authorize")
+        || is_under(path, "/.well-known")
+    {
+        vec![("oauth", rate.oauth_per_min)]
+    } else if is_under(path, "/v1")
+        || is_under(path, "/admin")
+        || is_under(path, "/mcp")
+        || path == "/healthz"
+    {
         vec![("global", rate.global_per_min)]
     } else {
         Vec::new()
@@ -476,6 +486,17 @@ mod tests {
             vec![("global", 600)]
         );
         assert_eq!(route_limits(&rate, &get, "/healthz"), vec![("global", 600)]);
+        assert_eq!(route_limits(&rate, &post, "/mcp"), vec![("global", 600)]);
+        assert_eq!(
+            route_limits(&rate, &post, "/oauth/token"),
+            vec![("oauth", 60)]
+        );
+        assert_eq!(
+            route_limits(&rate, &get, "/.well-known/oauth-authorization-server"),
+            vec![("oauth", 60)]
+        );
+        // the consent page is a dashboard page, like the rest of the SPA
+        assert!(route_limits(&rate, &get, "/oauth/authorize").is_empty());
         // not API routes: the SPA and static files are never limited
         assert!(route_limits(&rate, &get, "/").is_empty());
         assert!(route_limits(&rate, &get, "/snap/tok").is_empty());

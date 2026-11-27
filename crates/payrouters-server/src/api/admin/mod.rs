@@ -14,9 +14,10 @@ use super::auth::require_admin;
 use crate::providers::{self, CredentialField};
 use crate::state::AppState;
 
-mod payments;
-mod products;
-mod providers_admin;
+pub(crate) mod oauth_admin;
+pub(crate) mod payments;
+pub(crate) mod products;
+pub(crate) mod providers_admin;
 pub mod stats;
 
 pub fn routes(state: AppState) -> Router<AppState> {
@@ -27,6 +28,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .merge(providers_admin::routes())
         .merge(payments::routes())
         .merge(stats::routes())
+        .merge(oauth_admin::routes())
         .fallback(crate::error::json_not_found)
         .layer(middleware::from_fn_with_state(state, require_admin))
 }
@@ -50,6 +52,7 @@ async fn me(State(state): State<AppState>) -> Json<Value> {
         "ok": true,
         "version": env!("CARGO_PKG_VERSION"),
         "public_base_url": state.config.public_base_url,
+        "mcp_url": state.mcp_url(),
         "timezone": state.config.timezone.name(),
     }))
 }

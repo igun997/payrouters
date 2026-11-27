@@ -95,7 +95,7 @@ pub fn cash_in_view(r: CashInRow) -> CashInView {
 }
 
 #[derive(Debug, Deserialize)]
-struct ListQuery {
+pub(crate) struct ListQuery {
     mode: Option<Mode>,
     status: Option<PaymentStatus>,
     provider: Option<Provider>,
@@ -107,7 +107,7 @@ struct ListQuery {
     cursor: Option<String>,
 }
 
-async fn list(
+pub(crate) async fn list(
     State(state): State<AppState>,
     ApiQuery(q): ApiQuery<ListQuery>,
 ) -> Result<Json<ListResponse<AdminPayment>>> {
@@ -179,7 +179,10 @@ async fn list(
     Ok(Json(ListResponse { data, next_cursor }))
 }
 
-async fn detail(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<Value>> {
+pub(crate) async fn detail(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>> {
     let row = payments::get(&state, id).await?;
     let events: Vec<EventRow> = sqlx::query_as(
         "SELECT * FROM provider_events WHERE payment_id = $1 ORDER BY received_at DESC, id DESC LIMIT 100",
@@ -216,14 +219,14 @@ async fn detail(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<J
 }
 
 #[derive(Deserialize)]
-struct AdminCreate {
+pub(crate) struct AdminCreate {
     product_id: Uuid,
     mode: Mode,
     #[serde(flatten)]
     request: CreatePaymentRequest,
 }
 
-async fn create(
+pub(crate) async fn create(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<AdminCreate>,
 ) -> Result<(StatusCode, Json<AdminPayment>)> {
@@ -248,17 +251,20 @@ async fn create(
     Ok((status, Json(admin_view(&state, &row)?)))
 }
 
-async fn sync(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<AdminPayment>> {
+pub(crate) async fn sync(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<AdminPayment>> {
     let row = payments::sync(&state, id).await?;
     Ok(Json(admin_view(&state, &row)?))
 }
 
 #[derive(Deserialize)]
-struct SimulateBody {
+pub(crate) struct SimulateBody {
     outcome: Outcome,
 }
 
-async fn simulate(
+pub(crate) async fn simulate(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     ApiJson(body): ApiJson<SimulateBody>,
@@ -268,14 +274,14 @@ async fn simulate(
 }
 
 #[derive(Debug, Deserialize)]
-struct EventsQuery {
+pub(crate) struct EventsQuery {
     provider_account_id: Option<Uuid>,
     outcome: Option<String>,
     limit: Option<i64>,
     cursor: Option<String>,
 }
 
-async fn events(
+pub(crate) async fn events(
     State(state): State<AppState>,
     ApiQuery(q): ApiQuery<EventsQuery>,
 ) -> Result<Json<Value>> {
@@ -334,7 +340,7 @@ async fn events(
 }
 
 #[derive(Debug, Deserialize)]
-struct DeliveriesQuery {
+pub(crate) struct DeliveriesQuery {
     status: Option<String>,
     product_id: Option<Uuid>,
     payment_id: Option<Uuid>,
@@ -342,7 +348,7 @@ struct DeliveriesQuery {
     cursor: Option<String>,
 }
 
-async fn deliveries(
+pub(crate) async fn deliveries(
     State(state): State<AppState>,
     ApiQuery(q): ApiQuery<DeliveriesQuery>,
 ) -> Result<Json<Value>> {
@@ -384,7 +390,7 @@ async fn deliveries(
     Ok(Json(json!({ "data": rows, "next_cursor": next_cursor })))
 }
 
-async fn retry_delivery(
+pub(crate) async fn retry_delivery(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DeliveryRow>> {

@@ -140,6 +140,11 @@ async fn signed(
                         .into(),
                 ));
             }
+            AuthFailure::NotVerified => {
+                return Err(ProviderError::Rejected(
+                    "IDRX says this account is not verified: finish the onboarding and verification on the IDRX dashboard".into(),
+                ));
+            }
             // Possibly the other signature scheme: try it once.
             AuthFailure::BadSignature => last = Some(reply),
         }
@@ -155,8 +160,13 @@ async fn signed(
 enum AuthFailure {
     None,
     UnknownKey,
+    /// `401 User is not verified`: documented on mint, and not a signature problem.
+    NotVerified,
     BadSignature,
 }
+
+/// IDRX cancels an unpaid order after 24 hours whatever `expiryPeriod` says.
+const MAX_EXPIRY_MINUTES: i64 = 24 * 60;
 
 /// IDRX answers an unknown key with HTTP 400 `API Key not found`; signature problems are 401
 /// (documented) or a 4xx whose message mentions the signature/timestamp.
@@ -166,6 +176,9 @@ fn auth_failure(reply: &HttpReply) -> AuthFailure {
         .to_ascii_lowercase();
     if msg.contains("api key not found") {
         return AuthFailure::UnknownKey;
+    }
+    if msg.contains("not verified") {
+        return AuthFailure::NotVerified;
     }
     let looks_like_auth = ["signature", "unauthor", "timestamp", "invalid api"]
         .iter()
@@ -226,7 +239,7 @@ pub(crate) fn mint_body(
         "destinationWalletAddress": wallet,
         "networkChainId": chain,
         "requestType": "idrx",
-        "expiryPeriod": minutes_until(input.expires_at),
+        "expiryPeriod": minutes_until(input.expires_at).min(MAX_EXPIRY_MINUTES),
         "returnUrl": input.return_url.unwrap_or(input.snap_url),
     });
     if let Some(d) = input.description {
@@ -627,6 +640,10 @@ mod tests {
             AuthFailure::BadSignature
         ));
         assert!(matches!(
+            auth_failure(&reply(401, "User is not verified")),
+            AuthFailure::NotVerified
+        ));
+        assert!(matches!(
             auth_failure(&reply(400, "Invalid signature")),
             AuthFailure::BadSignature
         ));
@@ -644,5 +661,32 @@ mod tests {
     fn url_encoding() {
         assert_eq!(url_encode("a b/c"), "a%20b%2Fc");
         assert_eq!(url_encode("20260508154603"), "20260508154603");
+    }
+
+    #[test]
+    fn expiry_is_capped_at_the_24_hours_idrx_enforces() {
+        let c = creds(&[
+            (
+                "default_wallet_address",
+                "0x1111111111111111111111111111111111111111",
+            ),
+            ("default_chain_id", "137"),
+        ]);
+        let opts = json!({});
+        let input = ChargeInput {
+            payment_id: uuid::Uuid::nil(),
+            order_id: "INV-1",
+            amount: 50_000,
+            expires_at: Utc::now() + chrono::Duration::days(10),
+            description: None,
+            customer: None,
+            items: &[],
+            return_url: None,
+            snap_url: "https://pay.example.com/snap/t",
+            provider_options: &opts,
+            method: None,
+        };
+        let body = mint_body(&c, &input, None).unwrap();
+        assert_eq!(body["expiryPeriod"], 24 * 60);
     }
 }

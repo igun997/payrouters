@@ -39,8 +39,10 @@ pub struct RateConfig {
     pub snap_pay_per_min: u32,
     /// Inbound provider webhooks on `/hooks/*` per client per minute.
     pub hooks_per_min: u32,
-    /// `/v1`, `/admin` and `/healthz` per client per minute.
+    /// `/v1`, `/admin`, `/mcp` and `/healthz` per client per minute.
     pub global_per_min: u32,
+    /// OAuth endpoints and discovery documents (`/oauth/*`, `/.well-known/*`) per client per minute.
+    pub oauth_per_min: u32,
 }
 
 impl Default for RateConfig {
@@ -53,6 +55,7 @@ impl Default for RateConfig {
             snap_pay_per_min: 20,
             hooks_per_min: 600,
             global_per_min: 600,
+            oauth_per_min: 60,
         }
     }
 }
@@ -73,6 +76,7 @@ impl RateConfig {
             snap_pay_per_min: parse_or(&get, "RATE_SNAP_PAY_PER_MIN", d.snap_pay_per_min)?,
             hooks_per_min: parse_or(&get, "RATE_HOOKS_PER_MIN", d.hooks_per_min)?,
             global_per_min: parse_or(&get, "RATE_GLOBAL_PER_MIN", d.global_per_min)?,
+            oauth_per_min: parse_or(&get, "RATE_OAUTH_PER_MIN", d.oauth_per_min)?,
         })
     }
 }
@@ -205,6 +209,7 @@ mod tests {
             ("RATE_SNAP_PAY_PER_MIN", "3"),
             ("RATE_HOOKS_PER_MIN", "0"),
             ("RATE_GLOBAL_PER_MIN", "9"),
+            ("RATE_OAUTH_PER_MIN", "11"),
         ]))
         .unwrap();
         assert_eq!(cfg.auth_fails, 0);
@@ -214,6 +219,7 @@ mod tests {
         assert_eq!(cfg.snap_pay_per_min, 3);
         assert_eq!(cfg.hooks_per_min, 0);
         assert_eq!(cfg.global_per_min, 9);
+        assert_eq!(cfg.oauth_per_min, 11);
     }
 
     #[test]

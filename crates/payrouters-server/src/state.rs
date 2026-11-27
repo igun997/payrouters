@@ -49,6 +49,11 @@ impl AppState {
         format!("{}/snap/{}", self.config.public_base_url, token)
     }
 
+    /// The MCP endpoint: also the OAuth `resource`.
+    pub fn mcp_url(&self) -> String {
+        format!("{}/mcp", self.config.public_base_url)
+    }
+
     pub fn provider_webhook_url(&self, account_id: uuid::Uuid) -> String {
         format!("{}/hooks/{}", self.config.public_base_url, account_id)
     }

@@ -430,6 +430,101 @@ async fn midtrans_webhook_settles_once_and_rejects_bad_input(pool: PgPool) {
     assert_eq!(r.status, StatusCode::NOT_FOUND);
 }
 
+/// Since 28 Oct 2026 Midtrans signs notifications with the Signature Secret Key, a key of its own.
+/// Its "Test notification URL" button sends an order that does not exist: an authentic one must
+/// still get 200, or the dashboard reports the URL as failed.
+#[sqlx::test(migrations = "./migrations")]
+async fn midtrans_notifications_are_verified_with_the_signature_secret_key(pool: PgPool) {
+    let app = App::new(pool).await;
+    let server_key = "SB-Mid-server-aaaa1111";
+    let signature_key = "signature-secret-bbbb2222";
+    let (account, _) = app
+        .provider(
+            "midtrans",
+            "sandbox",
+            json!({ "server_key": server_key, "signature_secret_key": signature_key }),
+        )
+        .await;
+    let path = format!("/hooks/{account}");
+
+    // the dashboard shows the new field masked and the form lists it as optional
+    let listed = app.admin("GET", "/admin/providers", None).await;
+    let shown = &listed.json["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == account.as_str())
+        .unwrap()["credentials"];
+    assert_eq!(shown["signature_secret_key"], "••••2222");
+    let meta = app.admin("GET", "/admin/meta", None).await;
+    let midtrans = meta.json["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == "midtrans")
+        .unwrap();
+    let field = midtrans["credential_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["key"] == "signature_secret_key")
+        .unwrap();
+    assert_eq!(field["required"], false);
+    assert_eq!(field["secret"], true);
+
+    // Midtrans' "Test notification URL": unknown order, signed with the Signature Secret Key
+    let test = midtrans_notification(
+        "payment_notif_test_G1234_abcd",
+        "10000.00",
+        "settlement",
+        signature_key,
+    );
+    let ok = app.call("POST", &path, None, &[], Some(test)).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.text);
+
+    // the server key still signs notifications for merchants who never rotated
+    let legacy = midtrans_notification(
+        "payment_notif_test_G1234_efgh",
+        "10000.00",
+        "settlement",
+        server_key,
+    );
+    assert_eq!(
+        app.call("POST", &path, None, &[], Some(legacy))
+            .await
+            .status,
+        StatusCode::OK
+    );
+
+    // any other key is refused, and the stored event says what to check
+    let forged = midtrans_notification(
+        "payment_notif_test_G1234_ijkl",
+        "10000.00",
+        "settlement",
+        "someone-elses-key",
+    );
+    let refused = app.call("POST", &path, None, &[], Some(forged)).await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
+    assert!(
+        refused.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Signature Secret Key")
+    );
+    let events = app
+        .admin("GET", "/admin/webhook-events?outcome=rejected", None)
+        .await;
+    assert!(
+        events.json["data"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("Signature Secret Key")
+    );
+
+    // and an account that never got a signature secret key keeps verifying with its server key
+    // (covered by midtrans_webhook_settles_once_and_rejects_bad_input)
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn xendit_webhook_requires_callback_token_and_maps_channel(pool: PgPool) {
     let app = App::new(pool).await;

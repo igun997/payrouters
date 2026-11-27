@@ -74,7 +74,45 @@ pub(crate) fn payment_request_body(input: &ChargeInput<'_>, method: Method) -> V
     body
 }
 
+/// Xendit rejects a session that expires in less than 10 minutes (`INVALID_EXPIRY_DATE`).
+const SESSION_MIN_LIFETIME: chrono::Duration = chrono::Duration::minutes(10);
+
+/// Xendit wants names alphanumeric: letters, digits and spaces only.
+fn plain_name(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `+` and 8 to 15 digits, the E.164 shape Xendit requires for `mobile_number`.
+fn e164(raw: &str) -> Option<&str> {
+    let digits = raw.strip_prefix('+')?;
+    ((8..=15).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit())).then_some(raw)
+}
+
+/// A whole-number amount from a JSON number (Xendit may send `10000` or `10000.0`). Anything that
+/// is not a whole number becomes a value no stored amount can equal, so the amount check fails
+/// closed instead of being skipped.
+fn whole_amount(v: Option<&Value>) -> Option<i64> {
+    let n = v?;
+    if let Some(i) = n.as_i64() {
+        return Some(i);
+    }
+    let f = n.as_f64()?;
+    if f.is_finite() && f.fract() == 0.0 && f.abs() < 9e15 {
+        Some(f as i64)
+    } else {
+        Some(-1)
+    }
+}
+
 pub(crate) fn session_body(input: &ChargeInput<'_>) -> Value {
+    let expires_at = input
+        .expires_at
+        .max(Utc::now() + SESSION_MIN_LIFETIME + chrono::Duration::seconds(30));
     let mut body = json!({
         "reference_id": input.payment_id.to_string(),
         "session_type": "PAY",
@@ -83,28 +121,38 @@ pub(crate) fn session_body(input: &ChargeInput<'_>) -> Value {
         "currency": "IDR",
         "country": "ID",
         "capture_method": "AUTOMATIC",
-        "expires_at": iso(input.expires_at),
+        "expires_at": iso(expires_at),
         "metadata": { "order_id": input.order_id },
     });
     if let Some(d) = input.description {
         body["description"] = json!(d);
     }
-    if let Some(url) = input.return_url {
+    // Xendit only accepts HTTPS return URLs; the Snap page still redirects to the real one.
+    if let Some(url) = input.return_url.filter(|u| u.starts_with("https://")) {
         body["success_return_url"] = json!(url);
         body["cancel_return_url"] = json!(url);
     }
     if let Some(c) = input.customer
-        && let Some(name) = &c.name
+        && let Some(name) = c.name.as_deref().map(plain_name).filter(|n| !n.is_empty())
     {
+        let (given, surname) = match name.rsplit_once(' ') {
+            Some((given, surname)) => (given.to_string(), Some(surname.to_string())),
+            None => (name, None),
+        };
+        let mut detail = json!({ "given_names": given });
+        if let Some(s) = surname {
+            detail["surname"] = json!(s);
+        }
         let mut cust = json!({
-            "reference_id": format!("cust-{}", input.payment_id.simple()),
+            // alphanumeric only: no prefix with a dash
+            "reference_id": input.payment_id.simple().to_string(),
             "type": "INDIVIDUAL",
-            "individual_detail": { "given_names": name },
+            "individual_detail": detail,
         });
-        if let Some(e) = &c.email {
+        if let Some(e) = c.email.as_deref().filter(|e| e.len() <= 50) {
             cust["email"] = json!(e);
         }
-        if let Some(p) = &c.phone {
+        if let Some(p) = c.phone.as_deref().and_then(e164) {
             cust["mobile_number"] = json!(p);
         }
         body["customer"] = cust;
@@ -179,7 +227,7 @@ pub(crate) fn parse_event(v: &Value) -> Result<ParsedWebhook, String> {
             let mut u =
                 StatusUpdate::new(map_payment_status(str_field(data, "status").unwrap_or("")));
             u.method = str_field(data, "channel_code").and_then(method_from_channel);
-            u.amount = data.get("request_amount").and_then(Value::as_i64);
+            u.amount = whole_amount(data.get("request_amount"));
             u.paid_at = data
                 .get("captures")
                 .and_then(Value::as_array)
@@ -193,7 +241,7 @@ pub(crate) fn parse_event(v: &Value) -> Result<ParsedWebhook, String> {
         e if e.starts_with("payment_session.") => {
             let status = map_session_status(str_field(data, "status").unwrap_or(""));
             let mut u = StatusUpdate::new(status);
-            u.amount = data.get("amount").and_then(Value::as_i64);
+            u.amount = whole_amount(data.get("amount"));
             u.paid_at = str_field(data, "updated").and_then(parse_time);
             Some(u)
         }
@@ -329,11 +377,12 @@ impl ProviderAdapter for Xendit {
         };
         let mut u = StatusUpdate::new(status);
         u.provider_ref = Some(id.to_string());
-        u.amount = reply
-            .json
-            .get("request_amount")
-            .or_else(|| reply.json.get("amount"))
-            .and_then(Value::as_i64);
+        u.amount = whole_amount(
+            reply
+                .json
+                .get("request_amount")
+                .or_else(|| reply.json.get("amount")),
+        );
         if status == PaymentStatus::Paid {
             u.paid_at = str_field(&reply.json, "updated").and_then(parse_time);
         }
@@ -384,7 +433,13 @@ impl ProviderAdapter for Xendit {
             401 => Err(ProviderError::Rejected(
                 "Xendit rejected the secret key".into(),
             )),
+            403 if str_field(&reply.json, "error_code") == Some("UNAUTHORIZED_SENDER_IP") => {
+                Err(ProviderError::Rejected(
+                    "Xendit blocked this server's IP address: add it to the IP allowlist in Xendit settings".into(),
+                ))
+            }
             // Key is valid but lacks the Balance read permission: still proves authentication.
+            // (A key needs Money-in Write to create charges; this call cannot prove that.)
             403 => Ok(
                 "Authenticated against Xendit (key has no Balance permission, which is fine)"
                     .to_string(),
@@ -511,5 +566,74 @@ mod tests {
         );
         assert_eq!(map_session_status("COMPLETED"), PaymentStatus::Paid);
         assert_eq!(map_session_status("ACTIVE"), PaymentStatus::Pending);
+    }
+
+    #[test]
+    fn session_customer_and_urls_follow_xendit_rules() {
+        let opts = json!({});
+        let c = Customer {
+            name: Some("Siti N. O'Brien-Aisyah".into()),
+            email: Some(format!("{}@example.com", "a".repeat(45))),
+            phone: Some("0812345678".into()),
+        };
+        let mut i = input(Some(&c), &opts);
+        i.return_url = Some("http://app.example.com/thanks");
+        let s = session_body(&i);
+        // alphanumeric names, split into given names and surname
+        assert_eq!(s["customer"]["individual_detail"]["given_names"], "Siti N");
+        assert_eq!(
+            s["customer"]["individual_detail"]["surname"],
+            "OBrienAisyah"
+        );
+        // alphanumeric reference, over-long email and a non-E.164 number are left out
+        assert_eq!(
+            s["customer"]["reference_id"],
+            "00000000000000000000000000000000"
+        );
+        assert!(s["customer"].get("email").is_none());
+        assert!(s["customer"].get("mobile_number").is_none());
+        // https only
+        assert!(s.get("success_return_url").is_none());
+        assert!(s.get("cancel_return_url").is_none());
+
+        let ok = Customer {
+            name: Some("Budi".into()),
+            email: Some("b@x.id".into()),
+            phone: Some("+628123456789".into()),
+        };
+        let s = session_body(&input(Some(&ok), &opts));
+        assert_eq!(s["customer"]["email"], "b@x.id");
+        assert_eq!(s["customer"]["mobile_number"], "+628123456789");
+        assert!(s["customer"]["individual_detail"].get("surname").is_none());
+    }
+
+    #[test]
+    fn a_session_never_expires_sooner_than_xendit_allows() {
+        let opts = json!({});
+        let mut i = input(None, &opts);
+        i.expires_at = Utc::now() + chrono::Duration::minutes(5);
+        let s = session_body(&i);
+        let at = DateTime::parse_from_rfc3339(s["expires_at"].as_str().unwrap()).unwrap();
+        assert!(at.with_timezone(&Utc) > Utc::now() + chrono::Duration::minutes(10));
+        // a far expiry is passed through untouched
+        i.expires_at = DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
+            .unwrap()
+            .into();
+        assert_eq!(session_body(&i)["expires_at"], "2099-01-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn webhook_amounts_may_be_written_as_floats_and_odd_ones_never_match() {
+        assert_eq!(whole_amount(Some(&json!(10000))), Some(10_000));
+        assert_eq!(whole_amount(Some(&json!(10000.0))), Some(10_000));
+        assert_eq!(whole_amount(Some(&json!(10000.5))), Some(-1));
+        assert_eq!(whole_amount(Some(&json!("10000"))), None);
+        assert_eq!(whole_amount(None), None);
+        let body = json!({
+            "event": "payment.capture",
+            "data": { "reference_id": "r-1", "status": "SUCCEEDED", "request_amount": 150000.0 }
+        });
+        let parsed = parse_event(&body).unwrap();
+        assert_eq!(parsed.update.unwrap().amount, Some(150_000));
     }
 }

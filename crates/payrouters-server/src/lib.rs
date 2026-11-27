@@ -2,6 +2,7 @@ pub mod api;
 pub mod config;
 pub mod crypto;
 pub mod error;
+pub mod mcp;
 pub mod models;
 pub mod providers;
 pub mod rate_limit;
@@ -31,4 +32,5 @@ pub fn spawn_workers(state: &AppState) {
     tokio::spawn(services::outbound::run_loop(state.clone()));
     tokio::spawn(services::worker::run_loop(state.clone()));
     tokio::spawn(rate_limit::run_cleanup(state.limiter.clone()));
+    tokio::spawn(services::oauth::run_cleanup(state.clone()));
 }

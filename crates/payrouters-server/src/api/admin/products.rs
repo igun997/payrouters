@@ -28,7 +28,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 #[derive(Serialize)]
-struct ProductView {
+pub(crate) struct ProductView {
     id: Uuid,
     name: String,
     slug: String,
@@ -71,7 +71,7 @@ async fn one(state: &AppState, id: Uuid) -> Result<ProductView> {
     Ok(view(p, keys))
 }
 
-async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
+pub(crate) async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
     let products: Vec<ProductRow> =
         sqlx::query_as("SELECT * FROM products WHERE archived_at IS NULL ORDER BY created_at DESC")
             .fetch_all(&state.pool)
@@ -112,13 +112,13 @@ fn new_webhook_secret() -> String {
 }
 
 #[derive(Deserialize)]
-struct CreateProduct {
+pub(crate) struct CreateProduct {
     name: String,
     webhook_url: Option<String>,
     default_provider: Option<Provider>,
 }
 
-async fn create(
+pub(crate) async fn create(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<CreateProduct>,
 ) -> Result<(StatusCode, Json<Value>)> {
@@ -158,7 +158,7 @@ async fn create(
 }
 
 #[derive(Deserialize)]
-struct UpdateProduct {
+pub(crate) struct UpdateProduct {
     name: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     webhook_url: Option<Option<String>>,
@@ -166,7 +166,7 @@ struct UpdateProduct {
     default_provider: Option<Option<Provider>>,
 }
 
-async fn update(
+pub(crate) async fn update(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     ApiJson(body): ApiJson<UpdateProduct>,
@@ -226,7 +226,10 @@ async fn archive(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn rotate_secret(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Json<Value>> {
+pub(crate) async fn rotate_secret(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>> {
     let secret = new_webhook_secret();
     let res = sqlx::query(
         "UPDATE products SET webhook_secret_enc = $2 WHERE id = $1 AND archived_at IS NULL",
@@ -242,12 +245,12 @@ async fn rotate_secret(State(state): State<AppState>, Path(id): Path<Uuid>) -> R
 }
 
 #[derive(Deserialize)]
-struct CreateKey {
+pub(crate) struct CreateKey {
     mode: Mode,
     name: String,
 }
 
-async fn create_key(
+pub(crate) async fn create_key(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     ApiJson(body): ApiJson<CreateKey>,
@@ -285,7 +288,7 @@ async fn create_key(
     Ok((StatusCode::CREATED, Json(v)))
 }
 
-async fn revoke_key(
+pub(crate) async fn revoke_key(
     State(state): State<AppState>,
     Path((id, key_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {

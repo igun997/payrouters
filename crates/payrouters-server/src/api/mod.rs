@@ -13,6 +13,7 @@ use crate::state::AppState;
 
 pub mod admin;
 pub mod auth;
+pub mod oauth;
 pub mod snap;
 pub mod v1;
 pub mod webhooks;
@@ -36,6 +37,8 @@ pub fn router(state: AppState) -> Router {
         .nest("/snap/api", snap::routes())
         .nest("/hooks", webhooks::routes())
         .route("/healthz", get(healthz))
+        .merge(oauth::routes())
+        .merge(crate::mcp::routes())
         .fallback_service(spa)
         .with_state(state)
         // Outside the handlers so a refused request never reaches auth or the database.

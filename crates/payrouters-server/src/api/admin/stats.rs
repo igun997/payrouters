@@ -169,7 +169,7 @@ async fn cash_sums(state: &AppState, r: &Range) -> Result<Sums> {
     })
 }
 
-async fn summary(
+pub(crate) async fn summary(
     State(state): State<AppState>,
     ApiQuery(q): ApiQuery<StatsQuery>,
 ) -> Result<Json<Value>> {
