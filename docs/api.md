@@ -8,8 +8,9 @@ Single binary (Rust/axum + Postgres). Three audiences, three auth schemes:
 | Admin API | `/admin/*` | `Authorization: Bearer <ADMIN_TOKEN>` | the dashboard (SPA) |
 | Snap (public) | `/snap/api/:token` | none, token is the capability | customer browser |
 | Provider webhooks (inbound) | `POST /hooks/:provider_account_id` | provider-specific verification | Midtrans / Xendit / IDRX |
+| MCP server | `POST /mcp` | OAuth access token (`prm_at_…`) obtained through the dashboard session | AI assistants (Claude Code, Cursor, …); see `docs/mcp.md` |
 
-The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`, SPA fallback → `index.html`). Same origin, no CORS. Any path not matching `/v1`, `/admin`, `/snap/api`, `/hooks`, `/healthz` is the SPA (including `/snap/<token>` — the customer-facing page).
+The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`, SPA fallback → `index.html`). Same origin, no CORS. Any path not matching `/v1`, `/admin`, `/snap/api`, `/hooks`, `/mcp`, `/oauth/register`, `/oauth/token`, `/.well-known/*`, `/healthz` is the SPA (including `/snap/<token>`, the customer-facing page, and `/oauth/authorize`, the MCP consent page).
 
 ## Conventions
 
@@ -20,7 +21,7 @@ The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`,
   ```json
   { "error": { "code": "invalid_request", "message": "human text", "details": null } }
   ```
-  Codes: `invalid_request` 400, `unauthorized` 401, `not_found` 404, `conflict` 409 (`order_id_conflict`, `method_already_selected`, …use `code` literally), `unprocessable` 422 (`provider_unavailable`, `method_unsupported`, `sandbox_unsupported`), `rate_limited` 429 (with `Retry-After` seconds; failed-auth lockout on `/admin` and `/v1`, per-IP request limits on `/snap/api` and `/hooks`, tunable by `RATE_*` env), `provider_error` 502, `internal` 500.
+  Codes: `invalid_request` 400, `unauthorized` 401, `not_found` 404, `conflict` 409 (`order_id_conflict`, `method_already_selected`, …use `code` literally), `unprocessable` 422 (`provider_unavailable`, `method_unsupported`, `sandbox_unsupported`), `rate_limited` 429 (with `Retry-After` seconds; failed-auth lockout on `/admin`, `/v1`, `/mcp` and `/oauth/token`, per-IP request limits on `/snap/api`, `/hooks` and `/oauth/*`, tunable by `RATE_*` env), `provider_error` 502, `internal` 500.
 - Pagination (lists): `?limit=` (default 50, max 200) & `?cursor=`; response `{ "data": [...], "next_cursor": "opaque"|null }`.
 - Date filters: `from` / `to` are `YYYY-MM-DD` in the server's stats timezone (default `Asia/Jakarta`), inclusive.
 
@@ -72,7 +73,7 @@ The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`,
 { "type": "qris", "qr_string": "000201…", "qr_image_url": "https://…|null" }
 { "type": "redirect", "url": "https://provider-hosted-page" }
 ```
-(`biller_code`/`bill_key` are Mandiri bill payment; then `account_number` is `null`.)
+(`biller_code`/`bill_key` are Mandiri bill payment; then `account_number` is `null`. `qr_string` is an empty string when a provider returns only the QR image: use `qr_image_url` then.)
 
 ### Webhook event (PayRouters → your product)
 `POST <product.webhook_url>`
@@ -149,7 +150,7 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 ## Provider webhooks (inbound)
 
 `POST /hooks/:provider_account_id` — the single URL to paste into each provider dashboard (one per provider account). Always stores the raw request in the inbox. Responses: `200 {"ok":true}` when authentic (even if unmatched/duplicate/no-op), `401` when verification fails, `404` unknown account.
-Verification: Midtrans `signature_key` = SHA512(`order_id`+`status_code`+`gross_amount`+server_key); Xendit `x-callback-token` header = account `callback_token`; IDRX has no signature, so the status is re-fetched from IDRX Transaction History by `merchantOrderId` before anything is applied.
+Verification: Midtrans `signature_key` = SHA512(`order_id`+`status_code`+`gross_amount`+Signature Secret Key); the account's optional `signature_secret_key` credential is tried first and the server key second (before 28 Oct 2026 the server key was the signing key and merchants who never rotated still have identical values); Xendit `x-callback-token` header = account `callback_token`; IDRX has no signature, so the status is re-fetched from IDRX Transaction History by `merchantOrderId` before anything is applied.
 
 ---
 
@@ -239,6 +240,10 @@ Common query: `mode` (default `live`), `from`, `to` (default last 30 days), `pro
 - `GET /admin/cash-ins?…&method=&limit=&cursor=` → `{ "data": [CashIn], "next_cursor": null, "totals": { "count": 100, "gross": 15000000, "fee": 120000, "net": 14880000 } }` (totals cover the whole filter, not only the page)
 - `GET /admin/cash-ins/export.csv?…same filters` → `text/csv` (all rows, header: `paid_at,order_id,payment_id,product,provider,method,mode,gross,fee,net,provider_ref`)
 CashIn: `{ "id", "payment_id", "order_id", "product": {"id","name"}, "provider", "method": "va_bca|null", "mode", "currency": "IDR", "gross_amount", "fee_amount", "net_amount", "paid_at", "provider_ref" }`.
+
+## MCP server and OAuth
+
+`POST /mcp` speaks the Model Context Protocol; its OAuth 2.1 flow (discovery, dynamic client registration, PKCE, consent through the signed-in dashboard session) and the tool list are in `docs/mcp.md`. The admin side of the consent screen and the connection list are `GET|POST /admin/oauth/authorize`, `GET /admin/oauth/grants` and `DELETE /admin/oauth/grants/:id`. `GET /admin/me` also returns `mcp_url`.
 
 ## Misc
 - `GET /healthz` → `200 ok` (DB reachable).

@@ -32,6 +32,8 @@ Demo data (mock provider plus fake Midtrans and Xendit accounts). Regenerate wit
 | **Payment detail** | **Cash-ins** |
 | ![Webhooks: inbound provider events with headers and body](docs/screenshots/webhooks.png) | ![Providers: Midtrans, Xendit and the mock simulator](docs/screenshots/providers.png) |
 | **Webhooks** | **Providers** |
+| ![Integrations: MCP server URL, client snippets and connected apps](docs/screenshots/integrations.png) | ![OAuth consent: an assistant asks to connect, with read, change and live permissions](docs/screenshots/oauth-consent.png) |
+| **Integrations (MCP)** | **MCP consent** |
 
 ### Phone and the customer page
 
@@ -70,7 +72,8 @@ cargo run -p payrouters-server
 | `RATE_SNAP_PER_MIN` | `120` | Requests per minute per client on `/snap/api/*`. |
 | `RATE_SNAP_PAY_PER_MIN` | `20` | Per client per minute on `POST /snap/api/*/pay` and `/simulate`, on top of the snap limit. |
 | `RATE_HOOKS_PER_MIN` | `600` | Inbound provider webhooks (`/hooks/*`) per client per minute. Providers share few addresses, so keep this generous. |
-| `RATE_GLOBAL_PER_MIN` | `600` | `/v1`, `/admin` and `/healthz` per client per minute. The SPA and static files are never limited. |
+| `RATE_GLOBAL_PER_MIN` | `600` | `/v1`, `/admin`, `/mcp` and `/healthz` per client per minute. The SPA and static files are never limited. |
+| `RATE_OAUTH_PER_MIN` | `60` | OAuth endpoints and discovery documents (`/oauth/*`, `/.well-known/*`) per client per minute. |
 
 Limits are per process, in memory (a restart clears them), keyed by client address. Refused requests get `429` with `Retry-After` (seconds) and the usual error envelope, code `rate_limited`. Put `TRUSTED_PROXY_HEADER` only behind a proxy that overwrites the header (Caddy, nginx with `proxy_set_header X-Forwarded-For $remote_addr;`, or Cloudflare for `cf-connecting-ip`); without a proxy, leave it unset, otherwise any client can pick its own address.
 
@@ -82,7 +85,7 @@ Dashboard → Providers → Add account. Then paste the account's **webhook URL*
 
 | Provider | Credentials | Where to paste the webhook URL | Verification |
 |---|---|---|---|
-| Midtrans | Server key (sandbox / production) | Settings → Configuration → Payment Notification URL | `signature_key` (SHA-512) |
+| Midtrans | Server key (sandbox / production) and the **Signature Secret Key** (Settings → Access Keys; since 28 Oct 2026 Midtrans signs notifications with it, not with the server key) | Settings → Configuration → Payment Notification URL | `signature_key` (SHA-512 with the Signature Secret Key; the server key is accepted too) |
 | Xendit | Secret API key + webhook verification token | Settings → Webhooks (payment + payment session events) | `x-callback-token` |
 | IDRX | API key + secret (live only, no sandbox) + default wallet / chain | Dashboard → API Key → Callback URL (mint) | none (callback is unsigned) → every callback is re-fetched from IDRX Transaction History |
 | Mock | none, auto-created (sandbox) | – | simulator |
@@ -99,6 +102,16 @@ const { payment } = await pr.payments.create({ order_id: 'INV-1', amount: 150_00
 ```
 
 Webhooks to your product carry `PayRouters-Signature: t=…,v1=…` (HMAC-SHA256 of `t.body` with the product's `whsec_…` secret). Delivery is at-least-once with exponential backoff; dedupe on `PayRouters-Event-Id`. A payment that was marked `expired` can still become `paid` later if the provider collected money late: handle `payment.paid` after `payment.expired`.
+
+## Connect an AI assistant (MCP)
+
+PayRouters is also an MCP server with OAuth, so an assistant can set an integration up without anyone pasting tokens or reading the documentation:
+
+```bash
+claude mcp add --transport http payrouters https://pay.example.com/mcp
+```
+
+The client opens your browser at the consent screen; the signed-in dashboard session approves it (read, make changes, and optionally live mode, which is off by default). Then the assistant can read what is configured (`get_integration_status` lists the next steps), create a product and a sandbox key, generate code with the right base URL, create a test payment and prove that your webhook endpoint answers (`test_webhook_integration`). Dashboard → **Integrations** has the server URL, a snippet for each client and the list of connected apps with Revoke. Details, scopes and the tool list: `docs/mcp.md`.
 
 ## Deploying to a VPS
 
@@ -152,4 +165,8 @@ DATABASE_URL=postgres://payrouters:payrouters@127.0.0.1:5435/payrouters \
 
 - Provider adapters are unit-tested against documented payload shapes; they have **not** been exercised against live Midtrans / Xendit / IDRX endpoints. Run **Test connection** on each account and a sandbox payment before trusting production.
 - IDRX documents two different request-signing schemes and has no sandbox. The adapter tries the legacy snippet scheme first and falls back to the newer `METHOD:PATH:SHA256(body):ts` form when IDRX answers 401 (or a 4xx naming the signature), remembering the one that works per account.
+- Provider documentation was re-checked on 2026-11-27 (Midtrans access keys and QRIS, Xendit v3 payment requests and sessions, IDRX mint). Known gaps that are not handled yet:
+  - Midtrans: one Signature Secret Key per account (while rotating it, retries signed with the old key are refused until the status poller settles the payment); no `Idempotency-Key` header; no per-method amount bounds; the hosted Snap page shows every enabled method, not only the six PayRouters knows.
+  - Xendit: session webhooks may not carry `x-callback-token` (the check is kept; the poller settles the payment otherwise); `payment.failure` marks a payment failed even though a session lets the customer retry (a later success still wins); no per-method amount bounds.
+  - IDRX: a timeout or 5xx on mint can leave an order at IDRX that PayRouters forgot (IDRX has no idempotency key; recover from its payment-payload endpoint); the documented VA maximum (100.000.000) is below the 1.000.000.000 the adapter accepts.
 - Single admin (static bearer token), no refunds/payouts (by design), only VA and QRIS in Snap core mode (other methods via `checkout: "provider"`).
