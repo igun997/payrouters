@@ -10,7 +10,7 @@ Single binary (Rust/axum + Postgres). Three audiences, three auth schemes:
 | Provider webhooks (inbound) | `POST /hooks/:provider_account_id` | provider-specific verification | Midtrans / Xendit / IDRX |
 | MCP server | `POST /mcp` | OAuth access token (`prm_at_…`) obtained through the dashboard session | AI assistants (Claude Code, Cursor, …); see `docs/mcp.md` |
 
-The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`, SPA fallback → `index.html`). Same origin, no CORS. Any path not matching `/v1`, `/admin`, `/snap/api`, `/hooks`, `/mcp`, `/oauth/register`, `/oauth/token`, `/.well-known/*`, `/healthz` is the SPA (including `/snap/<token>`, the customer-facing page, and `/oauth/authorize`, the MCP consent page).
+The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`, SPA fallback → `index.html`). Same origin, no CORS. Any path not matching `/v1`, `/admin`, `/snap/api`, `/hooks`, `/mcp`, `/oauth/register`, `/oauth/token`, `/.well-known/*`, `/assets/logo/*`, `/healthz` is the SPA (including `/snap/<token>`, the customer-facing page, and `/oauth/authorize`, the MCP consent page).
 
 ## Conventions
 
@@ -247,3 +247,4 @@ CashIn: `{ "id", "payment_id", "order_id", "product": {"id","name"}, "provider",
 
 ## Misc
 - `GET /healthz` → `200 ok` (DB reachable).
+- `GET /assets/logo/:code` (public, `snap` rate limit) → the bank or QRIS logo for `bca`, `bni`, `bri`, `mandiri`, `permata` or `qris`, as `image/png` or `image/jpeg`; any other code is `404`. The server fetches each logo once from the Google favicon service (`t1.gstatic.com/faviconV2`), keeps it in memory for 7 days and answers `404` for 10 minutes when the fetch fails, so the payer's browser never contacts a third party; the UI then keeps its text badge. The server needs outbound HTTPS for this; without it everything else works.
