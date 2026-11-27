@@ -1,0 +1,16 @@
+.git
+.omp
+.github
+target
+**/node_modules
+web/build
+web/.svelte-kit
+web/e2e-results*
+web/playwright-report
+web/test-results
+web/.vscode
+sdk
+docs
+*.md
+.env
+.env.*

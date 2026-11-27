@@ -96,6 +96,19 @@ Restart=always
 
 Run a single instance (the workers assume it; row locks keep a second one safe but unnecessary).
 
+### Container image and EasyPanel
+
+Pushing a version tag builds the image in GitHub Actions (`.github/workflows/release-image.yml`) and publishes `ghcr.io/igun997/payrouters`:
+
+```bash
+# 1. bump `version` under [workspace.package] in Cargo.toml and commit
+git tag v0.2.0 && git push origin v0.2.0   # the tag must equal the Cargo version, or the build stops
+```
+
+Tags produced: `0.2.0`, `0.2` and, for a release without a `-suffix`, `latest`. The image holds the server and the dashboard (`WEB_DIR=/app/web`), listens on `8080` and answers `/healthz`. It needs a Postgres database and the variables in `.env.example`. Generate the secrets with `docker run --rm ghcr.io/igun997/payrouters:0.2.0 payrouters-server gen-secrets`.
+
+EasyPanel: create an App from the Docker image `ghcr.io/igun997/payrouters:<version>`, add registry credentials when the package is private (a GitHub token with `read:packages`), set the variables from `.env.example` in the Environment tab, point the domain at port `8080`, and add a Postgres service for `DATABASE_URL`. Run one replica.
+
 ## Design, UI and end-to-end tests
 
 - Design: Wonder file "PayRouters" (108 artboards, names end with the viewport width). Handoff, breakpoint/type/spacing scale and screen index: `docs/design.md`; generated scale: `docs/responsive.css` (merged into `web/src/routes/layout.css`); builder rules and shared components: `docs/web-conventions.md`.
