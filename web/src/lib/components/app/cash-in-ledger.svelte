@@ -36,9 +36,18 @@
 				<dd class="tabular whitespace-nowrap">−{formatIdr(fee)}</dd>
 			</div>
 		</dl>
-		<div class="flex items-center justify-between gap-4 border-t border-border pt-4">
+		<div
+			class="flex flex-col gap-1 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<span class="text-label">Net received</span>
-			<span class="tabular text-amount-lg whitespace-nowrap">{formatIdr(net)}</span>
+			<div class="amount-box flex-1 text-amount-lg">
+				<span
+					class="tabular block text-right whitespace-nowrap"
+					class:amount-fit={formatIdr(net).length > 12}
+				>
+					{formatIdr(net)}
+				</span>
+			</div>
 		</div>
 	{:else}
 		<p class="text-body text-muted-foreground">

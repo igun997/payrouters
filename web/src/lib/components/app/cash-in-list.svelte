@@ -80,8 +80,8 @@
 	>
 		<div class="flex items-start justify-between gap-3">
 			<div class="flex min-w-0 flex-col gap-0.5">
-				<span class="truncate text-mono-id font-mono font-medium">{row.order_id}</span>
-				<span class="truncate text-helper text-muted-foreground">
+				<span class="min-w-0 text-mono-id font-mono font-medium break-all">{row.order_id}</span>
+				<span class="min-w-0 text-helper break-words text-muted-foreground">
 					{row.product.name} · {providerLine(row)}
 				</span>
 			</div>
@@ -89,7 +89,7 @@
 				{listDateTime(row.paid_at)}
 			</span>
 		</div>
-		<dl class="grid grid-cols-3 gap-2 text-helper">
+		<dl class="grid grid-cols-1 gap-2 text-helper min-[420px]:grid-cols-3">
 			<div class="flex flex-col gap-0.5">
 				<dt class="text-muted-foreground">Gross</dt>
 				<dd class="tabular text-label whitespace-nowrap">{formatIdr(row.gross_amount)}</dd>
@@ -106,7 +106,7 @@
 			</div>
 		</dl>
 		{#if row.provider_ref}
-			<span class="truncate font-mono text-helper text-muted-foreground">
+			<span class="min-w-0 font-mono text-helper break-all text-muted-foreground">
 				ref {row.provider_ref}
 			</span>
 		{/if}

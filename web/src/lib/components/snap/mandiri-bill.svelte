@@ -21,7 +21,7 @@
 	data-testid="snap-mandiri-bill"
 >
 	<div class="flex items-center gap-3">
-		<BankTile text="MDR" />
+		<BankTile text="MDR" code="mandiri" />
 		<div class="flex min-w-0 flex-col">
 			<p class="text-card-title font-semibold">Mandiri Bill Payment</p>
 			<p class="text-helper text-muted-foreground">Bank transfer · Multipayment</p>

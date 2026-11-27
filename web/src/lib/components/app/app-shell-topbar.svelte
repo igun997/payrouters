@@ -49,7 +49,9 @@
 	<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 		<p class="text-page-title break-words md:truncate" data-testid="shell-title">{barTitle}</p>
 		{#if subtitle}
-			<p class="hidden truncate text-body text-muted-foreground md:block">{subtitle}</p>
+			<p class="hidden truncate text-body text-muted-foreground md:block" title={subtitle}>
+				{subtitle}
+			</p>
 		{/if}
 	</div>
 	{#if showRange}

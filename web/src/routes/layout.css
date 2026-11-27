@@ -171,7 +171,17 @@
 	--height-control: var(--control-h);
 	--min-height-touch: 44px;
 }
-
+/* Amounts (Rp 9.999.999.999) keep their semantic size and shrink only when their container is narrower
+   than the figure. Put `amount-box` (with the semantic size class) on the wrapper, `amount-fit` on the figure. */
+@utility amount-box {
+	container-type: inline-size;
+	min-width: 0;
+	max-width: 100%;
+}
+@utility amount-fit {
+	font-size: min(1em, calc(100cqi / 10));
+	white-space: nowrap;
+}
 @layer base {
 	* {
 		@apply border-border outline-ring/50;
@@ -179,6 +189,8 @@
 
 	body {
 		@apply bg-background font-sans text-foreground antialiased;
+		/* Unbroken text (order IDs, hashes, URLs, long names) wraps inside its box instead of running past it. */
+		overflow-wrap: anywhere;
 	}
 
 	/* Figures that must align (amounts, counts, ids). */

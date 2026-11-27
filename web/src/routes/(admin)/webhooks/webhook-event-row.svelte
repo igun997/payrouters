@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	/** Desktop columns (md and up) shared by the inbound table header and its rows. */
 	export const EVENT_COLUMNS =
-		'md:grid-cols-[40px_150px_minmax(0,1fr)_140px_minmax(0,1.2fr)] lg:grid-cols-[40px_150px_minmax(0,1fr)_110px_130px_110px_minmax(0,1fr)] xl:grid-cols-[40px_170px_minmax(0,1fr)_120px_140px_120px_minmax(0,1.2fr)]';
+		'md:grid-cols-[40px_170px_minmax(0,1fr)_140px_minmax(0,1.2fr)] xl:grid-cols-[40px_170px_minmax(0,1fr)_120px_140px_120px_minmax(0,1.2fr)]';
 </script>
 
 <script lang="ts">
@@ -102,14 +102,14 @@
 	{#if phone.current}
 		<div class="flex items-center justify-between gap-3">
 			<OutcomePill outcome={event.outcome} />
-			<span class="tabular text-helper whitespace-nowrap text-muted-foreground">
+			<span class="tabular shrink-0 text-helper whitespace-nowrap text-muted-foreground">
 				{formatDateTime(event.received_at)}
 			</span>
 		</div>
 		<div class="flex items-start justify-between gap-3">
 			<div class="flex min-w-0 flex-col gap-1">
 				<span class="text-label font-semibold">{providerName}</span>
-				<span class="truncate text-helper text-muted-foreground">{accountName}</span>
+				<span class="min-w-0 text-helper break-words text-muted-foreground">{accountName}</span>
 				{@render paymentLink()}
 				{#if event.error}
 					<span class="text-helper break-words text-failed-foreground">{event.error}</span>
@@ -129,30 +129,30 @@
 			{@render detail()}
 		{/if}
 	{:else}
-		<span class="tabular text-cell whitespace-nowrap text-muted-foreground">
+		<span class="tabular shrink-0 text-cell whitespace-nowrap text-muted-foreground">
 			{formatDateTime(event.received_at)}
 		</span>
 
 		<div class="flex min-w-0 flex-col">
 			<span class="text-cell font-semibold">{providerName}</span>
-			<span class="truncate text-helper text-muted-foreground">{accountName}</span>
+			<span class="min-w-0 text-helper break-words text-muted-foreground">{accountName}</span>
 		</div>
 
 		<div class="flex flex-col items-start gap-1.5">
 			<OutcomePill outcome={event.outcome} />
-			<span class="lg:hidden">{@render verifiedMark()}</span>
+			<span class="xl:hidden">{@render verifiedMark()}</span>
 		</div>
 
-		<span class="hidden lg:block">{@render verifiedMark()}</span>
+		<span class="hidden xl:block">{@render verifiedMark()}</span>
 
-		<div class="flex min-w-0 flex-col gap-1 lg:contents">
+		<div class="flex min-w-0 flex-col gap-1 xl:contents">
 			{@render paymentLink()}
 			{#if event.error}
-				<span class="text-helper break-words text-failed-foreground lg:self-center">
+				<span class="text-helper break-words text-failed-foreground xl:self-center">
 					{event.error}
 				</span>
 			{:else}
-				<span class="hidden text-cell text-muted-foreground lg:block">—</span>
+				<span class="hidden text-cell text-muted-foreground xl:block">—</span>
 			{/if}
 		</div>
 

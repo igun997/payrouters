@@ -40,13 +40,11 @@
 	</header>
 
 	{#each groups as group (group.title)}
-		<div class="flex flex-col gap-2">
+		<div class="flex flex-col gap-3 sm:gap-2">
 			<h2 class="text-micro text-muted-foreground">{group.title}</h2>
-			<ul
-				class="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-card"
-			>
+			<ul class="flex flex-col gap-3 sm:gap-2">
 				{#each group.items as method (method.code)}
-					<li>
+					<li class="overflow-hidden rounded-lg border border-border bg-card">
 						<MethodRow
 							{method}
 							state={rowState(method.code)}

@@ -41,5 +41,11 @@
 			</button>
 		</p>
 	{/if}
-	<Button size="lg" class="w-full" onclick={() => navigateTo(url)}>{label}</Button>
+	<Button
+		size="lg"
+		class="h-auto min-h-11 w-full py-2.5 text-center whitespace-normal"
+		onclick={() => navigateTo(url)}
+	>
+		{label}
+	</Button>
 </div>

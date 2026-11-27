@@ -160,7 +160,8 @@ const SCENARIOS: Scenario[] = [
 			{ what: 'choose amount', target: '[data-testid="snap-amount"]', sizes: AMOUNT_XL },
 			{ what: 'choose title', target: '[data-testid="snap-methods"] h1', sizes: PAGE_TITLE }
 		],
-		fitsDesktop: true,
+		// Six methods as separate cards no longer fit 1366x768 without scrolling, by choice: rows are
+		// roomy and spaced rather than a cramped list.
 		touchRows: true
 	},
 	{

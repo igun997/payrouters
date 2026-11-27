@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	/** Desktop columns (md and up) shared by the outbound table header and its rows. */
 	export const DELIVERY_COLUMNS =
-		'md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.4fr)_88px] lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_110px_80px_minmax(0,1.2fr)_minmax(0,1.1fr)_88px]';
+		'md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.4fr)_132px] xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_110px_80px_minmax(0,1.2fr)_minmax(0,1.1fr)_132px]';
 
 	/** Attempts the server makes before a delivery is marked failed (the retry schedule has 8 steps). */
 	export const MAX_ATTEMPTS = 8;
@@ -136,14 +136,14 @@
 		</div>
 
 		<div class="flex min-w-0 flex-col gap-1">
-			<span class="truncate text-mono-id font-mono">{delivery.event_type}</span>
+			<span class="min-w-0 text-mono-id font-mono break-all">{delivery.event_type}</span>
 			<a
 				href={resolve('/(admin)/payments/[id]', { id: delivery.payment_id })}
 				class="inline-flex min-h-touch w-fit items-center font-mono text-helper text-muted-foreground underline-offset-4 hover:underline"
 			>
 				payment {delivery.payment_id.slice(0, 8)}…
 			</a>
-			<span class="truncate text-helper text-muted-foreground">
+			<span class="min-w-0 text-helper break-words text-muted-foreground">
 				{productName} · {delivery.attempts}/{MAX_ATTEMPTS} attempts ·
 				{delivery.last_status_code ? `HTTP ${delivery.last_status_code}` : 'no response'}
 			</span>
@@ -179,7 +179,7 @@
 		{/if}
 	{:else}
 		<div class="flex min-w-0 flex-col gap-0.5">
-			<span class="truncate text-mono-id font-mono">{delivery.event_type}</span>
+			<span class="min-w-0 text-mono-id font-mono break-all">{delivery.event_type}</span>
 			<a
 				href={resolve('/(admin)/payments/[id]', { id: delivery.payment_id })}
 				class="inline-flex min-h-touch w-fit items-center font-mono text-helper text-muted-foreground underline-offset-4 hover:underline"
@@ -188,18 +188,18 @@
 			</a>
 		</div>
 
-		<span class="truncate text-cell" title={productName}>{productName}</span>
+		<span class="min-w-0 text-cell break-words" title={productName}>{productName}</span>
 
 		<div class="flex flex-col items-start gap-1.5">
 			<span data-testid="delivery-status" data-status={delivery.status}>
 				<Pill tone={status.tone}>{status.label}</Pill>
 			</span>
-			<span class="tabular text-helper whitespace-nowrap text-muted-foreground lg:hidden">
+			<span class="tabular text-helper whitespace-nowrap text-muted-foreground xl:hidden">
 				{delivery.attempts}/{MAX_ATTEMPTS} attempts
 			</span>
 		</div>
 
-		<span class="tabular hidden text-cell lg:block">{delivery.attempts}/{MAX_ATTEMPTS}</span>
+		<span class="tabular hidden text-cell xl:block">{delivery.attempts}/{MAX_ATTEMPTS}</span>
 
 		<div class="flex min-w-0 flex-col gap-0.5 text-cell">
 			<span class="tabular">
@@ -210,10 +210,10 @@
 					{delivery.last_error}
 				</span>
 			{/if}
-			<span class="text-helper text-muted-foreground lg:hidden">{responseNote}</span>
+			<span class="text-helper text-muted-foreground xl:hidden">{responseNote}</span>
 		</div>
 
-		<span class="tabular hidden text-helper text-muted-foreground lg:block">
+		<span class="tabular hidden min-w-0 text-helper break-words text-muted-foreground xl:block">
 			{delivered ? `Delivered ${formatDateTime(delivery.delivered_at)}` : nextValue}
 		</span>
 

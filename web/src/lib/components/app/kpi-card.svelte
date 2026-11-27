@@ -43,7 +43,11 @@
 		data-testid={testid}
 	>
 		<p class="text-label text-inverse-foreground/70">{title}</p>
-		<p class="tabular mt-1 text-amount-lg whitespace-nowrap text-signal">{value}</p>
+		<div class="amount-box mt-1 text-amount-lg">
+			<p class="tabular whitespace-nowrap text-signal" class:amount-fit={value.length > 12}>
+				{value}
+			</p>
+		</div>
 		{#if changeText}
 			<p
 				class={cn('mt-1 flex items-center gap-1.5 text-helper', up ? 'text-signal' : 'text-failed')}
@@ -55,9 +59,11 @@
 		{#if details.length}
 			<dl class="mt-4 grid grid-cols-2 gap-4 border-t border-inverse-foreground/15 pt-4">
 				{#each details as item (item.label)}
-					<div class="flex min-w-0 flex-col gap-0.5">
+					<div class="amount-box flex min-w-0 flex-col gap-0.5 text-card-title">
 						<dt class="text-helper text-inverse-foreground/70">{item.label}</dt>
-						<dd class="tabular text-card-title whitespace-nowrap">{item.value}</dd>
+						<dd class="tabular whitespace-nowrap" class:amount-fit={item.value.length > 12}>
+							{item.value}
+						</dd>
 					</div>
 				{/each}
 			</dl>
@@ -69,7 +75,9 @@
 		data-testid={testid}
 	>
 		<p class="text-label text-muted-foreground">{title}</p>
-		<p class="tabular text-stat whitespace-nowrap">{value}</p>
+		<div class="amount-box text-stat">
+			<p class="tabular whitespace-nowrap" class:amount-fit={value.length > 12}>{value}</p>
+		</div>
 		{#if changeText}
 			<p
 				class={cn(

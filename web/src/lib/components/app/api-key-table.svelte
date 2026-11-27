@@ -51,7 +51,7 @@
 		>
 			<li
 				aria-hidden="true"
-				class="hidden gap-x-4 bg-secondary px-4 py-2.5 text-helper font-semibold text-muted-foreground md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_auto_auto_auto]"
+				class="hidden gap-x-4 bg-secondary px-4 py-2.5 text-helper font-semibold text-muted-foreground lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_auto_auto_auto]"
 			>
 				<span>Name</span>
 				<span>Mode</span>
@@ -64,28 +64,30 @@
 			{#each keys as key (key.id)}
 				{@const revoked = key.revoked_at !== null}
 				<li
-					class="flex flex-col gap-2 border-t px-4 py-3 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_auto_auto_auto] md:items-center md:gap-x-4 md:py-2.5"
+					class="flex flex-col gap-2 border-t px-4 py-3 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto_auto_auto_auto] lg:items-center lg:gap-x-4 lg:py-2.5"
 					data-testid="api-key-row"
 					data-status={revoked ? 'revoked' : 'active'}
 				>
-					<div class="flex min-w-0 items-center justify-between gap-2 md:contents">
-						<span class="min-w-0 truncate text-cell font-medium text-foreground">{key.name}</span>
+					<div class="flex min-w-0 items-center justify-between gap-2 lg:contents">
+						<span class="min-w-0 text-cell font-medium break-words text-foreground">
+							{key.name}
+						</span>
 						<Pill tone={key.mode === 'live' ? 'success' : 'sandbox'}>
 							{key.mode === 'live' ? 'Live' : 'Sandbox'}
 						</Pill>
 					</div>
-					<span class="min-w-0 truncate text-mono-id font-mono text-muted-foreground">
+					<span class="min-w-0 text-mono-id font-mono break-all text-muted-foreground">
 						{key.prefix}…
 					</span>
 					<div
-						class="tabular flex flex-wrap gap-x-4 gap-y-1 text-helper text-muted-foreground md:contents"
+						class="tabular flex flex-wrap gap-x-4 gap-y-1 text-helper text-muted-foreground lg:contents"
 					>
-						<span class="md:text-cell">Created {keyDate(key.created_at)}</span>
-						<span class="md:text-cell">
+						<span class="lg:text-cell">Created {keyDate(key.created_at)}</span>
+						<span class="lg:text-cell">
 							Last used {keyLastUsed(key.last_used_at)}
 						</span>
 					</div>
-					<div class="flex items-center justify-between gap-2 md:contents">
+					<div class="flex items-center justify-between gap-2 lg:contents">
 						<span>
 							<Pill tone={revoked ? 'neutral' : 'success'}>{revoked ? 'Revoked' : 'Active'}</Pill>
 						</span>

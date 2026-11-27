@@ -3,6 +3,8 @@
 	// provider-hosted page. Shows a neutral line until the customer has chosen a method.
 	import type { AdminPayment } from '#lib/api/types';
 	import { Button } from '#lib/components/ui/button';
+	import BankTile from '#lib/components/snap/bank-tile.svelte';
+	import { bankBadge } from '#lib/components/snap/method-meta';
 	import CopyButton from './copy-button.svelte';
 	import CopyField from './copy-field.svelte';
 	import QrCode from './qr-code.svelte';
@@ -32,11 +34,7 @@
 		</p>
 	{:else if ins.type === 'virtual_account'}
 		<div class="flex items-center gap-3">
-			<span
-				class="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-background font-mono text-helper font-semibold"
-			>
-				{ins.bank.toUpperCase()}
-			</span>
+			<BankTile text={bankBadge(ins.bank)} code={ins.bank} class="size-10 text-helper" />
 			<div class="flex min-w-0 flex-col">
 				<span class="text-label">{methodLabel ?? `${ins.bank.toUpperCase()} Virtual Account`}</span>
 				<span class="text-micro text-muted-foreground uppercase">
@@ -45,10 +43,17 @@
 			</div>
 		</div>
 		{#if ins.account_number}
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<span class="tabular text-mono-va whitespace-nowrap" data-testid="va-number">
-					{groupDigits(ins.account_number)}
-				</span>
+			<div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+				<p
+					class="tabular flex min-w-0 flex-1 flex-wrap gap-x-2.5 text-mono-va font-mono font-semibold"
+					data-testid="va-number"
+				>
+					{#each groupDigits(ins.account_number).split(' ') as group, index (index)}<span
+							class="whitespace-nowrap"
+						>
+							{group}
+						</span>{/each}
+				</p>
 				<CopyButton text={ins.account_number} label="Copy number" />
 			</div>
 		{/if}

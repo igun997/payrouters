@@ -44,7 +44,7 @@
 	{disabled}
 	onclick={() => onpick(method.code)}
 	class={cn(
-		'flex min-h-touch w-full items-center gap-3 px-card py-3 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed sm:py-0',
+		'flex min-h-16 w-full items-center gap-3 px-card py-3.5 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed sm:min-h-14 sm:py-2.5',
 		disabled && state !== 'connecting' && 'opacity-60'
 	)}
 >
@@ -56,9 +56,9 @@
 			<QrCode class="size-5" />
 		</span>
 	{:else}
-		<BankTile text={badge} />
+		<BankTile text={badge} code={method.code} />
 	{/if}
-	<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+	<span class="flex min-w-0 flex-1 flex-col gap-1">
 		<span class="text-card-title font-semibold text-foreground">{method.label}</span>
 		{#if sub}
 			<span

@@ -208,10 +208,10 @@
 					<span>Received</span>
 					<span>Provider / account</span>
 					<span>Outcome</span>
-					<span class="hidden lg:block">Verified</span>
-					<span class="lg:hidden">Payment and error</span>
-					<span class="hidden lg:block">Payment</span>
-					<span class="hidden lg:block">Error</span>
+					<span class="hidden xl:block">Verified</span>
+					<span class="xl:hidden">Payment and error</span>
+					<span class="hidden xl:block">Payment</span>
+					<span class="hidden xl:block">Error</span>
 				</div>
 
 				{#if (inbox.loading && inbox.items.length === 0) || (accounts.loading && !accounts.data) || (meta.loading && !meta.data)}
@@ -310,9 +310,9 @@
 					<span>Event</span>
 					<span>Product</span>
 					<span>Status</span>
-					<span class="hidden lg:block">Attempts</span>
+					<span class="hidden xl:block">Attempts</span>
 					<span>Last response</span>
-					<span class="hidden lg:block">Next attempt</span>
+					<span class="hidden xl:block">Next attempt</span>
 					<span class="sr-only">Actions</span>
 				</div>
 

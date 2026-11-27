@@ -16,7 +16,7 @@
 		></span>
 		<span class="relative inline-flex size-3 rounded-full bg-pending-dot"></span>
 	</span>
-	<span class="flex flex-col">
+	<span class="flex flex-col gap-0.5">
 		<span class="text-label font-semibold">{title}</span>
 		<span class="text-helper text-muted-foreground">{hint}</span>
 	</span>

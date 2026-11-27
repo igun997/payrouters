@@ -29,15 +29,23 @@
 	{/if}
 	<dl class="flex flex-col gap-2.5 text-body">
 		{#each rows as row (row.label)}
-			<div class="flex items-baseline justify-between gap-4">
+			<div class="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
 				<dt class="text-muted-foreground">{row.label}</dt>
-				<dd class={cn('tabular text-right font-medium whitespace-nowrap', row.mono && 'font-mono')}>
+				<dd
+					class={cn(
+						'tabular min-w-0 font-medium sm:text-right',
+						/^[−-]?\s?Rp/.test(row.value) ? 'whitespace-nowrap' : 'break-words',
+						row.mono && 'font-mono break-all'
+					)}
+				>
 					{row.value}
 				</dd>
 			</div>
 		{/each}
 		{#if total}
-			<div class="flex items-baseline justify-between gap-4 border-t pt-3">
+			<div
+				class="flex flex-col gap-0.5 border-t pt-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+			>
 				<dt class="font-semibold">{total.label}</dt>
 				<dd class="tabular text-card-title font-bold whitespace-nowrap">{total.value}</dd>
 			</div>

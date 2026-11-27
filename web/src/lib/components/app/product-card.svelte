@@ -81,8 +81,10 @@
 					{initials}
 				</span>
 				<div class="flex min-w-0 flex-col gap-0.5">
-					<h2 class="truncate text-card-title text-foreground">{product.name}</h2>
-					<span class="truncate font-mono text-helper text-muted-foreground">{product.slug}</span>
+					<h2 class="min-w-0 text-card-title break-words text-foreground">{product.name}</h2>
+					<span class="min-w-0 font-mono text-helper break-all text-muted-foreground">
+						{product.slug}
+					</span>
 				</div>
 			</div>
 			<div class="flex items-center justify-between gap-3 text-body lg:hidden">

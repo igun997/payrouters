@@ -21,13 +21,16 @@
 	{#each items as item (item.label)}
 		<div
 			class={cn(
-				'flex min-w-0 flex-col gap-1 md:px-6 md:first:pl-0',
+				'amount-box flex min-w-0 flex-col gap-1 text-card-title md:px-6 md:first:pl-0',
 				item.emphasis &&
 					'order-first col-span-2 border-b border-inverse-foreground/15 pb-4 md:order-none md:col-span-1 md:border-b-0 md:pb-0'
 			)}
 		>
 			<dt class="text-helper text-inverse-foreground/70">{item.label}</dt>
-			<dd class={cn('tabular text-card-title whitespace-nowrap', item.emphasis && 'text-signal')}>
+			<dd
+				class={cn('tabular whitespace-nowrap', item.emphasis && 'text-signal')}
+				class:amount-fit={item.value.length > 12}
+			>
 				{#if loading}
 					<Skeleton class="h-5 w-28 bg-inverse-foreground/15" />
 				{:else}

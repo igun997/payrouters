@@ -26,6 +26,15 @@ export function bankBadge(bank: string): string {
 	return BADGE[key] ?? bank.slice(0, 3).toUpperCase();
 }
 
+/** Codes the server has a logo for (`GET /assets/logo/<code>`). */
+const LOGO_CODES = ['bca', 'bni', 'bri', 'mandiri', 'permata', 'qris'] as const;
+
+/** The logo code for a bank code, a `va_*` method code or `qris`; null when there is no logo. */
+export function logoCode(code: string): string | null {
+	const key = code.toLowerCase().replace(/^va_/, '');
+	return (LOGO_CODES as readonly string[]).includes(key) ? key : null;
+}
+
 /** Full name for a bank code from the `instructions.bank` field. */
 export function bankName(bank: string): string {
 	const key = `va_${bank.toLowerCase()}` as Method;

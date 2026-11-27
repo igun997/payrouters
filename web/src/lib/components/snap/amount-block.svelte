@@ -19,14 +19,17 @@
 </script>
 
 <section class="flex flex-wrap items-end justify-between gap-x-3 gap-y-3">
-	<div class="flex min-w-0 flex-col gap-0.5">
-		<span class="text-body text-muted-foreground">{label}</span>
+	<div
+		class={cn(
+			'amount-box flex min-w-0 flex-[1_1_12rem] flex-col gap-0.5',
+			size === 'xl' ? 'text-amount-xl' : 'text-amount-lg'
+		)}
+	>
+		<span class="text-body tracking-normal text-muted-foreground">{label}</span>
 		<span
 			data-testid="snap-amount"
-			class={cn(
-				'tabular whitespace-nowrap text-foreground',
-				size === 'xl' ? 'text-amount-xl' : 'text-amount-lg'
-			)}
+			class:amount-fit={formatIdr(amount).length > 12}
+			class="tabular whitespace-nowrap text-foreground"
 		>
 			{formatIdr(amount)}
 		</span>

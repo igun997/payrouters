@@ -141,11 +141,11 @@
 								<div class="flex min-w-0 flex-col gap-0.5">
 									<a
 										href={resolve('/(admin)/payments/[id]', { id: payment.id })}
-										class="inline-flex min-h-touch w-fit items-center truncate text-mono-id font-mono underline-offset-4 hover:underline"
+										class="inline-flex min-h-touch w-fit max-w-full items-center text-mono-id font-mono break-all underline-offset-4 hover:underline"
 									>
 										{payment.order_id}
 									</a>
-									<span class="truncate text-helper text-muted-foreground">
+									<span class="text-helper break-words text-muted-foreground">
 										{payment.product.name} · {formatDateTime(payment.created_at)}
 									</span>
 								</div>

@@ -34,7 +34,7 @@
 	data-testid="snap-va"
 >
 	<div class="flex items-center gap-3">
-		<BankTile text={bankBadge(instructions.bank)} />
+		<BankTile text={bankBadge(instructions.bank)} code={instructions.bank} />
 		<div class="flex min-w-0 flex-col">
 			<p class="text-card-title font-semibold">{bankName(instructions.bank)}</p>
 			<p class="text-helper text-muted-foreground">Bank transfer</p>

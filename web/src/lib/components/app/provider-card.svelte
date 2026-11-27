@@ -56,7 +56,7 @@
 			{PROVIDER_CODE[account.provider] ?? account.provider.slice(0, 2).toUpperCase()}
 		</div>
 		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-			<h2 class="truncate text-card-title text-foreground">{account.label}</h2>
+			<h2 class="min-w-0 text-card-title break-words text-foreground">{account.label}</h2>
 			<span class="text-helper text-muted-foreground md:hidden">{providerLabel}</span>
 			<div class="hidden flex-wrap items-center gap-2 md:flex">
 				<Pill tone={isLive ? 'success' : 'sandbox'}>{isLive ? 'Live' : 'Sandbox'}</Pill>
@@ -95,9 +95,7 @@
 			{#each credentials as [key, value] (key)}
 				<div class="flex items-center justify-between gap-4">
 					<dt class="text-muted-foreground">{credentialLabel(key)}</dt>
-					<dd
-						class="tabular min-w-0 text-right text-mono-id font-mono break-all text-foreground md:truncate"
-					>
+					<dd class="tabular min-w-0 text-right text-mono-id font-mono break-all text-foreground">
 						{value || 'Not set'}
 					</dd>
 				</div>
@@ -119,7 +117,7 @@
 			<div
 				class="flex items-center gap-2 rounded-md border bg-background py-1.5 pr-1.5 pl-3 max-md:bg-secondary"
 			>
-				<code class="min-w-0 flex-1 text-mono-id font-mono break-all text-foreground md:truncate">
+				<code class="min-w-0 flex-1 text-mono-id font-mono break-all text-foreground">
 					{account.webhook_url}
 				</code>
 				<CopyButton text={account.webhook_url} label="Copy" />
@@ -128,14 +126,14 @@
 		{/if}
 	</div>
 
-	<footer class="flex flex-col gap-3 border-t pt-4 md:flex-row md:items-end md:justify-between">
+	<footer class="flex flex-col gap-3 border-t pt-4 lg:flex-row lg:items-end lg:justify-between">
 		<div class="flex min-w-0 flex-col gap-0.5">
 			<span class="text-helper text-muted-foreground">Fee schedule</span>
 			<span class="text-body text-foreground">
 				{feeSummary(account.provider, account.fees, methodLabels)}
 			</span>
 		</div>
-		<div class="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+		<div class="grid grid-cols-2 gap-2 md:flex lg:shrink-0">
 			<Button
 				variant="outline"
 				class="max-md:order-2"

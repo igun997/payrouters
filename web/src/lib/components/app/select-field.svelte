@@ -28,7 +28,10 @@
 {:else}
 	<Select.Root type="single" bind:value>
 		<Select.Trigger
-			class={cn('w-44 data-placeholder:text-foreground', className)}
+			class={cn(
+				'h-auto min-h-11 w-44 max-w-full text-left whitespace-normal data-placeholder:text-foreground',
+				className
+			)}
 			aria-label={label}
 		>
 			{selectedLabel}

@@ -38,7 +38,11 @@
 {#snippet amountBlock()}
 	<div class="flex flex-col gap-1">
 		<p class="text-label text-muted-foreground">Order amount</p>
-		<p class="tabular text-amount-lg whitespace-nowrap">{formatIdr(payment.amount)}</p>
+		<div class="amount-box text-amount-lg">
+			<p class="tabular whitespace-nowrap" class:amount-fit={formatIdr(payment.amount).length > 12}>
+				{formatIdr(payment.amount)}
+			</p>
+		</div>
 		{#if payment.status === 'paid'}
 			<p class="text-helper text-muted-foreground">Paid on {fullDateTime(payment.paid_at)}</p>
 		{:else}

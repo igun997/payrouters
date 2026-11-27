@@ -57,7 +57,14 @@
 	<div class="flex flex-col items-center gap-1.5">
 		<h1 class="text-result-title">{title}</h1>
 		{#if amount}
-			<p class="tabular text-stat font-bold whitespace-nowrap">{amount}</p>
+			<div class="amount-box w-full text-stat">
+				<p
+					class="tabular text-center font-bold whitespace-nowrap"
+					class:amount-fit={amount.length > 12}
+				>
+					{amount}
+				</p>
+			</div>
 		{/if}
 		{#if detail}
 			<p class="max-w-[30rem] text-body text-muted-foreground">{detail}</p>

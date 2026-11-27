@@ -50,7 +50,7 @@
 		{/if}
 		{#if merchant}
 			<span
-				class="min-w-0 flex-1 truncate text-card-title font-semibold"
+				class="min-w-0 flex-1 text-card-title font-semibold break-words"
 				data-testid="snap-merchant-bar"
 			>
 				{merchant}
@@ -77,7 +77,7 @@
 	</header>
 
 	<main
-		class="mx-auto flex w-full flex-1 flex-col gap-section px-page pt-5 pb-6 sm:max-w-[480px] sm:pt-5 sm:pb-4"
+		class="mx-auto flex w-full flex-1 flex-col gap-section px-page pt-5 pb-6 sm:max-w-[480px] sm:pt-6 sm:pb-8"
 	>
 		{#if merchant}
 			<p class="hidden text-label text-muted-foreground sm:block" data-testid="snap-merchant">
