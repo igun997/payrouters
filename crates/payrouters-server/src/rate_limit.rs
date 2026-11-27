@@ -226,7 +226,9 @@ fn is_under(path: &str, prefix: &str) -> bool {
 /// Which request limits apply to a request: `(scope, limit per minute)` pairs. The SPA and
 /// static files have none.
 fn route_limits(rate: &RateConfig, method: &Method, path: &str) -> Vec<(&'static str, u32)> {
-    if is_under(path, "/snap/api") {
+    if is_under(path, "/assets/logo") {
+        vec![("snap", rate.snap_per_min)]
+    } else if is_under(path, "/snap/api") {
         let mut out = vec![("snap", rate.snap_per_min)];
         let pay = path.ends_with("/pay") || path.ends_with("/simulate");
         if *method == Method::POST && pay {
@@ -471,6 +473,10 @@ mod tests {
         );
         assert_eq!(
             route_limits(&rate, &get, "/snap/api/tok/pay"),
+            vec![("snap", 120)]
+        );
+        assert_eq!(
+            route_limits(&rate, &get, "/assets/logo/bca"),
             vec![("snap", 120)]
         );
         assert_eq!(

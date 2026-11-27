@@ -1139,3 +1139,22 @@ async fn snap_requests_are_rate_limited_per_client(pool: PgPool) {
         .await;
     assert_eq!(second.status, StatusCode::TOO_MANY_REQUESTS);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn logo_route_serves_only_known_codes_and_never_the_spa(pool: PgPool) {
+    let app = App::new(pool).await;
+    // not a code we know: nothing is fetched
+    let unknown = app
+        .call("GET", "/assets/logo/evil.example.com", None, &[], None)
+        .await;
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND);
+    // a known code is an image when the logo service answers and a plain 404 when it does not
+    // (the test machine may be offline); it is never the SPA's index.html
+    let known = app.call("GET", "/assets/logo/bca", None, &[], None).await;
+    assert!(
+        known.status == StatusCode::OK || known.status == StatusCode::NOT_FOUND,
+        "{}",
+        known.status
+    );
+    assert!(!known.text.contains("<html"), "{}", known.text);
+}

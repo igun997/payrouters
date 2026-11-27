@@ -13,6 +13,7 @@ use crate::state::AppState;
 
 pub mod admin;
 pub mod auth;
+pub mod logos;
 pub mod oauth;
 pub mod snap;
 pub mod v1;
@@ -37,6 +38,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/snap/api", snap::routes())
         .nest("/hooks", webhooks::routes())
         .route("/healthz", get(healthz))
+        .merge(logos::routes())
         .merge(oauth::routes())
         .merge(crate::mcp::routes())
         .fallback_service(spa)
