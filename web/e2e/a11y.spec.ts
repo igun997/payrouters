@@ -4,6 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { type Locator, type Page, expect } from '@playwright/test';
 import { test } from './support/fixtures';
 import { newSnapPayment, snapPath } from './support/snap-helpers';
+import { newAuthorization } from './support/oauth';
 
 /** Fails on serious and critical axe violations, one line per node with the rule, target and fix link. */
 async function expectNoSeriousViolations(page: Page): Promise<void> {
@@ -79,6 +80,19 @@ for (const width of [390, 1366] as const) {
 		test('Providers', async ({ admin }) => {
 			await admin.goto('/providers');
 			await expect(admin.getByTestId('provider-list')).toBeVisible();
+			await expectNoSeriousViolations(admin);
+		});
+
+		test('Integrations', async ({ admin }) => {
+			await admin.goto('/integrations');
+			await expect(admin.getByTestId('mcp-url')).toBeVisible();
+			await expectNoSeriousViolations(admin);
+		});
+
+		test('OAuth consent', async ({ admin, request, baseURL }) => {
+			const auth = await newAuthorization(request, baseURL);
+			await admin.goto(auth.path);
+			await expect(admin.getByTestId('oauth-allow')).toBeVisible();
 			await expectNoSeriousViolations(admin);
 		});
 

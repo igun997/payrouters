@@ -274,6 +274,8 @@ export interface Me {
 	version: string;
 	public_base_url: string;
 	timezone: string;
+	/** The MCP server URL (`{public_base_url}/mcp`) that assistants connect to. */
+	mcp_url: string;
 }
 
 export interface StatsRange {
@@ -350,4 +352,46 @@ export interface SnapState {
 
 export interface ApiErrorEnvelope {
 	error: { code: string; message: string; details?: unknown };
+}
+
+// MCP OAuth consent and connections (docs/mcp.md, "Authorization and consent" and "Connections").
+
+export type OAuthScopeKey = 'read' | 'write' | 'live';
+
+export interface OAuthScope {
+	key: OAuthScopeKey;
+	label: string;
+	description: string;
+	/** Pre-checked state: what the client asked for (`read` is always granted). */
+	granted: boolean;
+	/** A locked scope is always granted and cannot be unticked (`read`). */
+	locked: boolean;
+}
+
+export interface OAuthAuthorizePreview {
+	client: { client_id: string; client_name: string };
+	/** Host the user is sent back to after deciding, e.g. `127.0.0.1`. */
+	redirect_host: string;
+	resource: string;
+	scopes: OAuthScope[];
+}
+
+export interface OAuthDecisionBody {
+	decision: 'allow' | 'deny';
+	/** Final space-separated scopes; must include `read`. */
+	scope: string;
+}
+
+export interface OAuthRedirect {
+	redirect_url: string;
+}
+
+export interface OAuthGrant {
+	id: string;
+	client_id: string;
+	client_name: string;
+	scopes: OAuthScopeKey[];
+	created_at: string;
+	last_used_at: string | null;
+	expires_at: string;
 }

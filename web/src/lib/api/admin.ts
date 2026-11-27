@@ -8,6 +8,10 @@ import type {
 	Delivery,
 	Me,
 	Meta,
+	OAuthAuthorizePreview,
+	OAuthDecisionBody,
+	OAuthGrant,
+	OAuthRedirect,
 	Page,
 	PaymentDetail,
 	Product,
@@ -60,6 +64,17 @@ export type DeliveriesQuery = {
 	limit?: number;
 	cursor?: string;
 };
+
+/** Turns a location search string (`?a=b`, or `''`) into the path suffix the API expects. */
+function withSearch(search: string): string {
+	if (!search || search === '?') return '';
+	return search.startsWith('?') ? search : `?${search}`;
+}
+
+/** The authorization request's fields as a JSON body (the decision endpoint takes them as body). */
+function authorizeFields(search: string): Record<string, string> {
+	return Object.fromEntries(new URLSearchParams(search));
+}
 
 export const adminApi = {
 	/** Validates a token: pass `token` explicitly (login) or omit it to use the stored one. */
@@ -124,5 +139,19 @@ export const adminApi = {
 		request<{ data: BreakdownRow[] }>('/admin/stats/breakdown', { query: { by, ...query } }),
 	listCashIns: (query: CashInsQuery) => request<CashInPage>('/admin/cash-ins', { query }),
 	downloadCashInsCsv: (query: CashInsQuery, filename: string) =>
-		downloadFile('/admin/cash-ins/export.csv', query, filename)
+		downloadFile('/admin/cash-ins/export.csv', query, filename),
+
+	// MCP OAuth consent (the page's own query string is passed through as-is)
+	oauthAuthorizePreview: (search: string) =>
+		request<OAuthAuthorizePreview>(`/admin/oauth/authorize${withSearch(search)}`),
+	/** Decides the request. The query fields go in the JSON body, next to the final scope and decision. */
+	oauthAuthorizeDecide: (search: string, decision: OAuthDecisionBody) =>
+		request<OAuthRedirect>('/admin/oauth/authorize', {
+			method: 'POST',
+			body: { ...authorizeFields(search), ...decision }
+		}),
+
+	// Connected apps
+	listOAuthGrants: () => request<{ data: OAuthGrant[] }>('/admin/oauth/grants'),
+	revokeOAuthGrant: (id: string) => requestVoid(`/admin/oauth/grants/${id}`, { method: 'DELETE' })
 };

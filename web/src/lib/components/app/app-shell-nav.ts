@@ -1,5 +1,5 @@
 // Navigation for the admin shell: sidebar and icon rail (all items), bottom tab bar (four tabs plus
-// More), and the More panel (Products, Webhooks, Playground).
+// More), and the More panel (Products, Webhooks, Playground, API docs, Integrations).
 import type { Component } from 'svelte';
 import { resolve } from '$app/paths';
 import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
@@ -10,6 +10,7 @@ import Landmark from '@lucide/svelte/icons/landmark';
 import Webhook from '@lucide/svelte/icons/webhook';
 import FlaskConical from '@lucide/svelte/icons/flask-conical';
 import BookOpen from '@lucide/svelte/icons/book-open';
+import Plug from '@lucide/svelte/icons/plug';
 
 export type NavItem = { href: string; label: string; icon: Component<{ class?: string }> };
 
@@ -23,7 +24,8 @@ export const sidebarNav: NavItem[] = [
 	{ href: resolve('/(admin)/providers'), label: 'Providers', icon: Landmark },
 	{ href: resolve('/(admin)/webhooks'), label: 'Webhooks', icon: Webhook },
 	{ href: resolve('/(admin)/playground'), label: 'Playground', icon: FlaskConical },
-	{ href: resolve('/(admin)/docs'), label: 'API docs', icon: BookOpen }
+	{ href: resolve('/(admin)/docs'), label: 'API docs', icon: BookOpen },
+	{ href: resolve('/(admin)/integrations'), label: 'Integrations', icon: Plug }
 ];
 
 export const tabNav: NavItem[] = [

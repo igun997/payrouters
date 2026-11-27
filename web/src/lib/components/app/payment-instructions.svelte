@@ -65,15 +65,28 @@
 		</p>
 	{:else if ins.type === 'qris'}
 		<div class="flex flex-col items-start gap-4 sm:flex-row">
-			<QrCode
-				text={ins.qr_string}
-				size={200}
-				alt="QRIS code for this payment"
-				class="w-44 shrink-0"
-			/>
+			{#if ins.qr_string}
+				<QrCode
+					text={ins.qr_string}
+					size={200}
+					alt="QRIS code for this payment"
+					class="w-44 shrink-0"
+				/>
+			{:else if ins.qr_image_url}
+				<!-- Some providers return only an image for the QR code. -->
+				<img
+					src={ins.qr_image_url}
+					alt="QRIS code for this payment"
+					width="176"
+					height="176"
+					class="h-auto w-44 shrink-0 rounded-md bg-white p-2"
+				/>
+			{/if}
 			<div class="flex min-w-0 flex-1 flex-col gap-3">
 				<span class="text-label">{methodLabel ?? 'QRIS'}</span>
-				<CopyField label="QR string" value={ins.qr_string} />
+				{#if ins.qr_string}
+					<CopyField label="QR string" value={ins.qr_string} />
+				{/if}
 				{#if ins.qr_image_url}
 					<Button
 						variant="link"

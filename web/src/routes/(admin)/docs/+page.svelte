@@ -20,7 +20,8 @@
 		{ id: 'snap', label: 'The Snap page' },
 		{ id: 'errors', label: 'Errors and limits' },
 		{ id: 'sandbox', label: 'Sandbox' },
-		{ id: 'sdk', label: 'TypeScript SDK' }
+		{ id: 'sdk', label: 'TypeScript SDK' },
+		{ id: 'mcp', label: 'Connect an AI assistant' }
 	];
 
 	const fields: { name: string; type: string; note: string }[] = [
@@ -485,6 +486,27 @@ console.log(payment.snap_url, payment.payable_amount ?? payment.amount);`;
 			</p>
 			<CodeBlock code="pnpm add @payrouters/sdk" caption="Install" />
 			<CodeBlock code={sdkCode} caption="Create a payment (TypeScript)" />
+		</section>
+
+		<section id="mcp" class="flex scroll-mt-4 flex-col gap-3 rounded-lg border bg-card p-card">
+			<h2 class="text-card-title">Connect an AI assistant</h2>
+			<p class="text-body text-muted-foreground">
+				PayRouters is an MCP server with OAuth. An assistant such as Claude Code or Cursor connects
+				without anyone pasting a token: it opens your browser, the signed-in dashboard session
+				approves it, and it can then read your configuration, create a product and a sandbox key,
+				generate code with the right base URL and test your webhook endpoint, instead of guessing
+				field names from these docs.
+			</p>
+			<CodeBlock
+				code={`claude mcp add --transport http payrouters ${base}/mcp`}
+				caption="Claude Code"
+			/>
+			<p class="text-helper text-muted-foreground">
+				Live mode is off unless you tick it on the consent screen. Manage connections under
+				<a class="underline underline-offset-4" href={resolve('/(admin)/integrations')}>
+					Integrations
+				</a>.
+			</p>
 		</section>
 	</div>
 

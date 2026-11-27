@@ -9,6 +9,7 @@
 // across Midtrans and Xendit accounts with SQL, so the charts and tables look like a live shop.
 // Writes ../docs/screenshots/*.png. Demo data only: the credentials and webhook hosts are fake.
 import { execFileSync } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -298,4 +299,67 @@ await shot('overview-phone', { width: 390, height: 844, scale: 2, path: '/' });
 await shot('payments-phone', { width: 390, height: 844, scale: 2, path: '/payments' });
 await shot('snap-choose', { width: 390, height: 844, scale: 2, path: `/snap/${chooseToken}` });
 await shot('snap-va', { width: 390, height: 844, scale: 2, path: `/snap/${openToken}` });
+
+// --- MCP: one approved connection for the Integrations list, one open request for the consent card ----
+const callback = 'http://127.0.0.1:33418/callback';
+async function oauthClient(name) {
+	const res = await fetch(`${BASE}/oauth/register`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ client_name: name, redirect_uris: [callback] })
+	});
+	const { client_id } = await res.json();
+	const verifier = randomBytes(32).toString('base64url');
+	const challenge = createHash('sha256').update(verifier).digest('base64url');
+	const query = new URLSearchParams({
+		response_type: 'code',
+		client_id,
+		redirect_uri: callback,
+		code_challenge: challenge,
+		code_challenge_method: 'S256',
+		state: 'demo',
+		scope: 'read write',
+		resource: `${BASE}/mcp`
+	});
+	return { client_id, verifier, challenge, query };
+}
+for (const name of ['Claude Code', 'Cursor']) {
+	const c = await oauthClient(name);
+	const approved = await api('POST', '/admin/oauth/authorize', {
+		response_type: 'code',
+		client_id: c.client_id,
+		redirect_uri: callback,
+		code_challenge: c.challenge,
+		code_challenge_method: 'S256',
+		state: 'demo',
+		scope: name === 'Cursor' ? 'read' : 'read write',
+		resource: `${BASE}/mcp`,
+		decision: 'allow'
+	});
+	const code = new URL(approved.redirect_url).searchParams.get('code');
+	await fetch(`${BASE}/oauth/token`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body: new URLSearchParams({
+			grant_type: 'authorization_code',
+			code,
+			redirect_uri: callback,
+			client_id: c.client_id,
+			code_verifier: c.verifier
+		})
+	});
+}
+const pending = await oauthClient('Claude Code');
+await shot('integrations', { width: 1366, height: 1180, path: '/integrations' });
+await shot('oauth-consent', {
+	width: 1366,
+	height: 800,
+	path: `/oauth/authorize?${pending.query}`
+});
+await shot('oauth-consent-phone', {
+	width: 390,
+	height: 844,
+	scale: 2,
+	path: `/oauth/authorize?${pending.query}`
+});
 await browser.close();

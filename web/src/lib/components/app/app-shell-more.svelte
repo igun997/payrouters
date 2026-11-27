@@ -1,6 +1,7 @@
 <script lang="ts">
-	// Phone "More" screen: session, the secondary sections (Products, Webhooks, Playground), data
-	// mode, theme, sign out and version. Replaces the page area while open; the tab bar stays.
+	// Phone "More" screen: session, the secondary sections (Products, Webhooks, Playground, API docs,
+	// Integrations), data mode, theme, sign out and version. Replaces the page area while open; the
+	// tab bar stays.
 	import { resolve } from '$app/paths';
 	import { userPrefersMode, setMode } from 'mode-watcher';
 	import BrandMark from './brand-mark.svelte';
@@ -12,6 +13,7 @@
 	import Webhook from '@lucide/svelte/icons/webhook';
 	import FlaskConical from '@lucide/svelte/icons/flask-conical';
 	import BookOpen from '@lucide/svelte/icons/book-open';
+	import Plug from '@lucide/svelte/icons/plug';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LogOut from '@lucide/svelte/icons/log-out';
 
@@ -42,6 +44,12 @@
 			label: 'API docs',
 			hint: 'Create payments, webhooks and errors',
 			icon: BookOpen
+		},
+		{
+			href: resolve('/(admin)/integrations'),
+			label: 'Integrations',
+			hint: 'Connect AI assistants',
+			icon: Plug
 		}
 	];
 
