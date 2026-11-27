@@ -15,5 +15,6 @@ E2E_PORT=8093 pnpm exec playwright test e2e/snap.spec.ts   # own port + own data
 - `e2e/support/api.ts` arranges state through the admin/product APIs (products, keys, providers, paid payments, signed Midtrans notifications); specs assert through the UI.
 - `e2e/support/fixtures.ts`: `api`, `admin` (signed-in page), `product`, `clientIp`, `VIEWPORTS`, `hasHorizontalScroll`, `wrappedAmounts`. Every page and `request` in a test sends that test's own `X-Forwarded-For` (`clientIp`), so per-client limits never mix tests.
 - Selectors: `getByRole`/`getByLabel` first, `data-testid` for structural hooks (listed in the builders' notes: `page-<name>`, `<thing>-list|row`, `dialog-*`, `snap-*`).
-- Last full run: 159 passed, 4 skipped (phone-only tests skip on the desktop project; they pass in the phone project).
-Specs: login, rate-limit (sign-in lockout, login copy), snap (all states), payments, products, providers, webhooks, cash-ins, playground, live-mode, responsive (320/390/768/1024/1366), a11y (axe, serious+critical).
+- Last full run: 241 passed, 31 skipped across the desktop and phone projects (a test that needs the other viewport skips itself).
+
+Specs: login, rate-limit (sign-in lockout, login copy), snap (all states), payments, products, providers, webhooks, cash-ins, playground, docs, live-mode, responsive (320/390/768/1024/1366), a11y (axe, serious+critical).

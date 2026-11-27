@@ -236,7 +236,7 @@ Where the code and an artboard disagree, this section is the source of truth. Th
 - Every fetch has a skeleton. Lists wait for the catalog (`meta`) before rendering rows, so provider and method slugs never flash. Filter selects, status chip counts, cash-in totals and the Playground form show placeholders while their data loads.
 - A request error shows `Could not load <subject>` with `The server returned <status>.` for unstructured HTTP failures; a structured API error shows its own message. Actions that fail keep the `Request failed` title.
 - The Overview shows `N paid of M closed` instead of a conversion delta, and hides the change line when current and previous periods are both zero. The API has no previous-period conversion.
-- Not supported by the API, so not built: Change method, Try another method after a terminal state, the IDRX destination-wallet card, a customer-chose-method activity entry, Copy and Roll key per key (full keys are shown once), per-product payment count and last delivery, and a docs link on the Payments empty state.
+- Not supported by the API, so not built: Change method, Try another method after a terminal state, the IDRX destination-wallet card, a customer-chose-method activity entry, Copy and Roll key per key (full keys are shown once), and per-product payment count and last delivery.
 
 ### Per screen
 
@@ -249,6 +249,7 @@ Where the code and an artboard disagree, this section is the source of truth. Th
 - Playground: the first product is preselected. Mode is read-only and follows the top bar switch (the 390 artboard shows a selector). Checkout uses two radio cards.
 - More: Data mode is a full-width rounded segmented control; Theme is a select row. It shows no token tail, host or version.
 - Date range: selected days form one continuous band with rounded ends; the popover scrolls inside short viewports.
+- API docs (`/docs`, not in the Wonder file): a product-API guide for the developers who integrate a product. Sections are Overview, Authentication, Create a payment, Checkout and methods, Payment status, Webhooks, The Snap page, Errors and limits, Sandbox and TypeScript SDK, each a card with copyable code blocks; an on-this-page list shows from xl. Examples use the dashboard origin as the base URL. It is a sidebar item (`API docs`), a row in More, and the second action (`Read the API docs`) of the Payments empty state, which stacks full width on phones. The implementer contract stays in `docs/api.md`.
 - IDRX has no sandbox, so its mode is locked to Live everywhere.
 
 ### Implementation notes

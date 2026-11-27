@@ -9,6 +9,7 @@ import Package from '@lucide/svelte/icons/package';
 import Landmark from '@lucide/svelte/icons/landmark';
 import Webhook from '@lucide/svelte/icons/webhook';
 import FlaskConical from '@lucide/svelte/icons/flask-conical';
+import BookOpen from '@lucide/svelte/icons/book-open';
 
 export type NavItem = { href: string; label: string; icon: Component<{ class?: string }> };
 
@@ -21,7 +22,8 @@ export const sidebarNav: NavItem[] = [
 	{ href: resolve('/(admin)/products'), label: 'Products', icon: Package },
 	{ href: resolve('/(admin)/providers'), label: 'Providers', icon: Landmark },
 	{ href: resolve('/(admin)/webhooks'), label: 'Webhooks', icon: Webhook },
-	{ href: resolve('/(admin)/playground'), label: 'Playground', icon: FlaskConical }
+	{ href: resolve('/(admin)/playground'), label: 'Playground', icon: FlaskConical },
+	{ href: resolve('/(admin)/docs'), label: 'API docs', icon: BookOpen }
 ];
 
 export const tabNav: NavItem[] = [

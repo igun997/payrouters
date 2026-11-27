@@ -11,6 +11,7 @@
 	import Package from '@lucide/svelte/icons/package';
 	import Webhook from '@lucide/svelte/icons/webhook';
 	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LogOut from '@lucide/svelte/icons/log-out';
 
@@ -35,6 +36,12 @@
 			label: 'Playground',
 			hint: 'Create a sandbox payment',
 			icon: FlaskConical
+		},
+		{
+			href: resolve('/(admin)/docs'),
+			label: 'API docs',
+			hint: 'Create payments, webhooks and errors',
+			icon: BookOpen
 		}
 	];
 

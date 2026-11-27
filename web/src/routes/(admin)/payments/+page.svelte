@@ -20,6 +20,7 @@
 	import { cn } from '#lib/utils';
 	import EmptyState from '#lib/components/app/empty-state.svelte';
 	import Search from '@lucide/svelte/icons/search';
+	import BookOpen from '@lucide/svelte/icons/book-open';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import CreditCard from '@lucide/svelte/icons/credit-card';
 	import SearchX from '@lucide/svelte/icons/search-x';
@@ -244,9 +245,13 @@
 				class="min-h-[calc(100svh-13rem)] bg-card"
 			>
 				{#snippet actions()}
-					<Button href={resolve('/(admin)/playground')}>
+					<Button href={resolve('/(admin)/playground')} class="max-sm:w-full">
 						<FlaskConical data-icon="inline-start" />
 						Open Playground
+					</Button>
+					<Button variant="outline" href={resolve('/(admin)/docs')} class="max-sm:w-full">
+						<BookOpen data-icon="inline-start" />
+						Read the API docs
 					</Button>
 				{/snippet}
 			</EmptyState>
@@ -285,9 +290,13 @@
 							dashed
 						>
 							{#snippet actions()}
-								<Button href={resolve('/(admin)/playground')}>
+								<Button href={resolve('/(admin)/playground')} class="max-sm:w-full">
 									<FlaskConical data-icon="inline-start" />
 									Open Playground
+								</Button>
+								<Button variant="outline" href={resolve('/(admin)/docs')} class="max-sm:w-full">
+									<BookOpen data-icon="inline-start" />
+									Read the API docs
 								</Button>
 							{/snippet}
 						</EmptyState>

@@ -70,6 +70,12 @@ for (const width of [390, 1366] as const) {
 			await expectNoSeriousViolations(admin);
 		});
 
+		test('API docs', async ({ admin }) => {
+			await admin.goto('/docs');
+			await expect(admin.getByTestId('page-docs')).toBeVisible();
+			await expectNoSeriousViolations(admin);
+		});
+
 		test('Providers', async ({ admin }) => {
 			await admin.goto('/providers');
 			await expect(admin.getByTestId('provider-list')).toBeVisible();

@@ -37,7 +37,9 @@
 		<h2 class="text-card-title">{title}</h2>
 		{#if description}<p class="text-body text-muted-foreground">{description}</p>{/if}
 	</div>
-	{#if actions}<div class="mt-1 flex flex-wrap items-center justify-center gap-2">
+	{#if actions}<div
+			class="mt-1 flex w-full flex-col items-center justify-center gap-2 sm:w-auto sm:flex-row sm:flex-wrap"
+		>
 			{@render actions()}
 		</div>{/if}
 </div>
