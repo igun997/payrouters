@@ -150,14 +150,14 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 ## Provider webhooks (inbound)
 
 `POST /hooks/:provider_account_id` — the single URL to paste into each provider dashboard (one per provider account). Always stores the raw request in the inbox. Responses: `200 {"ok":true}` when authentic (even if unmatched/duplicate/no-op), `401` when verification fails, `404` unknown account.
-Verification: Midtrans `signature_key` = SHA512(`order_id`+`status_code`+`gross_amount`+Signature Secret Key); the account's optional `signature_secret_key` credential is tried first and the server key second (before 28 Oct 2026 the server key was the signing key and merchants who never rotated still have identical values); Xendit `x-callback-token` header = account `callback_token`; IDRX has no signature, so the status is re-fetched from IDRX Transaction History by `merchantOrderId` before anything is applied.
+Verification: Midtrans `signature_key` = SHA512(`order_id`+`status_code`+`gross_amount`+Signature Secret Key); the account's optional `signature_secret_key` credential is tried first and the server key second (before 28 Oct 2026 the server key was the signing key and merchants who never rotated still have identical values); Xendit `x-callback-token` header = account `callback_token`; a Midtrans body with none of `order_id`, `transaction_status`, `signature_key`, `status_code`, `gross_amount` (the recurring and account-linking notifications, and their dashboard test buttons) is acknowledged with 200 and ignored; IDRX has no signature, so the status is re-fetched from IDRX Transaction History by `merchantOrderId` before anything is applied.
 
 ---
 
 ## Admin API (`/admin`, bearer `ADMIN_TOKEN`)
 
 ### Meta
-- `GET /admin/me` → `{ "ok": true, "version": "0.2.0", "public_base_url": "https://…", "timezone": "Asia/Jakarta" }` (use to validate a token on login).
+- `GET /admin/me` → `{ "ok": true, "version": "0.2.1", "public_base_url": "https://…", "timezone": "Asia/Jakarta" }` (use to validate a token on login).
 - `GET /admin/meta` →
 ```json
 {

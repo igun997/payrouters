@@ -85,7 +85,7 @@ Dashboard → Providers → Add account. Then paste the account's **webhook URL*
 
 | Provider | Credentials | Where to paste the webhook URL | Verification |
 |---|---|---|---|
-| Midtrans | Server key (sandbox / production) and the **Signature Secret Key** (Settings → Access Keys; since 28 Oct 2026 Midtrans signs notifications with it, not with the server key) | Settings → Configuration → Payment Notification URL | `signature_key` (SHA-512 with the Signature Secret Key; the server key is accepted too) |
+| Midtrans | Server key (sandbox / production) and the **Signature Secret Key** (Settings → Access Keys; since 28 Oct 2026 Midtrans signs notifications with it, not with the server key) | Settings → Configuration → Payment Notification URL (the recurring and account-linking URLs can point at the same hook: they are acknowledged and ignored) | `signature_key` (SHA-512 with the Signature Secret Key; the server key is accepted too) |
 | Xendit | Secret API key + webhook verification token | Settings → Webhooks (payment + payment session events) | `x-callback-token` |
 | IDRX | API key + secret (live only, no sandbox) + default wallet / chain | Dashboard → API Key → Callback URL (mint) | none (callback is unsigned) → every callback is re-fetched from IDRX Transaction History |
 | Mock | none, auto-created (sandbox) | – | simulator |

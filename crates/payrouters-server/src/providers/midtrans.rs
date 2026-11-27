@@ -286,6 +286,21 @@ pub(crate) fn status_from_payload(v: &Value) -> Option<StatusUpdate> {
     Some(u)
 }
 
+/// A payment notification names an order, a status or a signature. A body with none of them (the
+/// recurring and account-linking notifications) is not about a payment. One that has any of them
+/// but not all the signed fields is still verified, and refused.
+fn is_payment_notification(v: &Value) -> bool {
+    [
+        "order_id",
+        "transaction_status",
+        "signature_key",
+        "status_code",
+        "gross_amount",
+    ]
+    .iter()
+    .any(|k| v.get(*k).is_some())
+}
+
 /// A signed field as Midtrans wrote it: strings are used verbatim, a bare number as printed.
 fn signed_field(v: &Value, key: &str) -> Option<String> {
     match v.get(key)? {
@@ -475,6 +490,15 @@ impl ProviderAdapter for Midtrans {
     ) -> Result<ParsedWebhook, WebhookError> {
         let v: Value = serde_json::from_slice(body)
             .map_err(|e| WebhookError::Malformed(format!("body is not JSON: {e}")))?;
+        // Midtrans has three notification URLs (payment, recurring, account linking) and the dashboard
+        // test button sends a different body to each. Only payment notifications carry the signed
+        // fields; the others are acknowledged and ignored, which changes no payment.
+        if !is_payment_notification(&v) {
+            return Ok(ParsedWebhook {
+                lookup: Lookup::Ignore,
+                update: None,
+            });
+        }
         // The Signature Secret Key signs notifications. The server key is accepted too: it was the
         // signing key before 28 Oct 2026 and still is for merchants who never rotated either key.
         let keys: Vec<&str> = ["signature_secret_key", "server_key"]
@@ -758,5 +782,19 @@ mod tests {
             expected_signature(&numeric, "k")
         );
         assert!(expected_signature(&json!({ "order_id": "o-1" }), "k").is_none());
+    }
+
+    #[test]
+    fn only_payment_notifications_need_a_signature() {
+        // account linking and recurring tests carry none of the payment fields
+        assert!(!is_payment_notification(
+            &json!({ "account_id": "a-1", "account_status": "ENABLED", "payment_type": "gopay" })
+        ));
+        assert!(!is_payment_notification(&json!({})));
+        // a payment body with the signature stripped is still a payment body
+        assert!(is_payment_notification(
+            &json!({ "order_id": "o-1", "transaction_status": "settlement" })
+        ));
+        assert!(is_payment_notification(&json!({ "signature_key": "x" })));
     }
 }

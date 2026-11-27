@@ -521,6 +521,21 @@ async fn midtrans_notifications_are_verified_with_the_signature_secret_key(pool:
             .contains("Signature Secret Key")
     );
 
+    // the recurring and account-linking "Test notification URL" buttons post bodies without any
+    // payment field: acknowledged, nothing changes
+    let linking =
+        json!({ "account_id": "gopay-1", "account_status": "ENABLED", "payment_type": "gopay" });
+    let ack = app
+        .call("POST", &path, None, &[], Some(linking.to_string()))
+        .await;
+    assert_eq!(ack.status, StatusCode::OK, "{}", ack.text);
+    // a payment body without its signature is still refused
+    let stripped = json!({ "order_id": "o-1", "transaction_status": "settlement" });
+    let refused = app
+        .call("POST", &path, None, &[], Some(stripped.to_string()))
+        .await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
+
     // and an account that never got a signature secret key keeps verifying with its server key
     // (covered by midtrans_webhook_settles_once_and_rejects_bad_input)
 }
