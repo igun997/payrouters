@@ -102,8 +102,10 @@ async fn find_payment(
         }
         Lookup::ProviderRef(r) if !r.is_empty() => {
             sqlx::query_as::<_, PaymentRow>(
-                "SELECT * FROM payments WHERE provider_account_id = $1 AND provider_ref = $2
-                 ORDER BY created_at DESC LIMIT 1",
+                "SELECT * FROM payments
+                 WHERE provider_account_id = $1
+                   AND (provider_ref = $2 OR previous_refs @> ARRAY[$2]::text[])
+                 ORDER BY (provider_ref = $2) DESC, created_at DESC LIMIT 1",
             )
             .bind(account_id)
             .bind(r)

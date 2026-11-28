@@ -13,6 +13,8 @@ Errors are JSON with an HTTP status:
 | 404 | `not_found` | No such payment for this key. |
 | 409 | `order_id_conflict` | The `order_id` exists with a different amount or provider, or is no longer pending. |
 | 409 | `method_already_selected` | The payment already has instructions. |
+| 409 | `payment_not_restartable` | Snap `POST /restart`: the payment can still be paid, or it is paid, failed or cancelled. |
+| 409 | `restart_limit` | Snap `POST /restart`: the payment was already started over five times. |
 | 422 | `provider_unavailable` | No enabled provider account for this mode. Add one in the dashboard (Providers) or use `mock` in sandbox. |
 | 422 | `method_unsupported` | The provider does not offer that method. |
 | 422 | `method_not_enabled` | The product has payment options and this method is not among them (topic `payment-options`). |

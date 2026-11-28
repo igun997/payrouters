@@ -240,6 +240,7 @@ impl ProviderAdapter for Mayar {
                 "transaction_id": str_field(data, "transactionId"),
             }),
             payable_amount: None,
+            expires_at: None,
         })
     }
 

@@ -69,6 +69,7 @@ impl ProviderAdapter for Mock {
             provider_ref: Some(format!("mock_{}", input.payment_id.simple())),
             provider_data: json!({ "kind": "mock" }),
             payable_amount: None,
+            expires_at: None,
         })
     }
 

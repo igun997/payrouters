@@ -26,7 +26,7 @@
 | `checkout` | `snap` (default, PayRouters hosted page on the provider's core API) or `provider` (the provider's own hosted page). |
 | `method` | `va_bca`, `va_bni`, `va_bri`, `va_mandiri`, `va_permata`, `qris`. With `snap` and a method the charge is created now and `instructions` is returned; without one the customer picks on the Snap page. |
 | `description`, `customer`, `items`, `metadata` | Optional. `items` prices must add up to `amount`. `metadata` is returned unchanged in payments and webhooks. |
-| `expires_in` | Seconds. Default 86400, minimum 300. |
+| `expires_in` | Seconds. Default 86400, minimum 300. `expires_at` on the payment is the deadline the provider enforces, which can be shorter (IDRX 24 hours, Midtrans QRIS and Snap 7 days, PayPal about 3 hours) or, for a Xendit hosted session, longer (10 minutes minimum). See topic `checkout-and-methods` for what happens at expiry. |
 | `return_url` | Where the Snap page sends the customer once the payment is no longer pending. |
 | `provider_options` | IDRX only: `destination_wallet_address`, `chain_id` (default to the provider account's values). |
 

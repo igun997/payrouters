@@ -42,6 +42,10 @@ fn base(mode: Mode) -> &'static str {
 const CURRENCY: &str = "USD";
 const EXPONENT: u32 = 2;
 
+/// PayPal keeps an order the payer has not approved open for about three hours (longer needs
+/// PayPal's account team), whatever deadline the payment asked for.
+const APPROVAL_WINDOW: chrono::Duration = chrono::Duration::hours(3);
+
 /// The fixed rate, if any, from the account credentials.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FxConfig {
@@ -769,6 +773,7 @@ impl ProviderAdapter for Paypal {
                 "rate_date": fx.source.date(),
             }),
             payable_amount: None,
+            expires_at: enforced_expiry(input.expires_at, None, Some(APPROVAL_WINDOW)),
         })
     }
 

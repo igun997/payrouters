@@ -415,11 +415,22 @@ impl ProviderAdapter for Midtrans {
         let instructions = parse_instructions(method, &reply.json).ok_or_else(|| {
             ProviderError::Unavailable("Midtrans response lacked payment instructions".into())
         })?;
+        // Only a dynamic QRIS has a lifetime cap; virtual accounts take the requested minutes.
+        let expires_at = (method == Method::Qris)
+            .then(|| {
+                enforced_expiry(
+                    input.expires_at,
+                    None,
+                    Some(chrono::Duration::minutes(MAX_EXPIRY_MINUTES)),
+                )
+            })
+            .flatten();
         Ok(ChargeOutput {
             instructions,
             provider_ref: str_field(&reply.json, "transaction_id").map(str::to_string),
             provider_data: json!({ "kind": "core" }),
             payable_amount: None,
+            expires_at,
         })
     }
 
@@ -460,6 +471,11 @@ impl ProviderAdapter for Midtrans {
             provider_ref: str_field(&reply.json, "token").map(str::to_string),
             provider_data: json!({ "kind": "snap" }),
             payable_amount: None,
+            expires_at: enforced_expiry(
+                input.expires_at,
+                None,
+                Some(chrono::Duration::minutes(MAX_EXPIRY_MINUTES)),
+            ),
         })
     }
 

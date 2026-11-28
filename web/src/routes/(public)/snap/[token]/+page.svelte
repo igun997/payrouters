@@ -20,6 +20,7 @@
 	import PayBefore from '#lib/components/snap/pay-before.svelte';
 	import PaymentResult from '#lib/components/snap/payment-result.svelte';
 	import ResultHero from '#lib/components/snap/result-hero.svelte';
+	import RestartPanel from '#lib/components/snap/restart-panel.svelte';
 	import Unlink from '@lucide/svelte/icons/unlink';
 	import SnapShell from '#lib/components/snap/snap-shell.svelte';
 	import { safeHttpUrl } from '#lib/url';
@@ -36,6 +37,7 @@
 	let connecting = $state<string | null>(null);
 	let failed = $state<{ key: string; message: string } | null>(null);
 	let simulating = $state(false);
+	let restarting = $state(false);
 	// Every request takes a number; a response is applied only if no newer request started after it.
 	// That keeps a slow poll from overwriting the result of a pay or simulate call.
 	let latest = 0;
@@ -45,6 +47,7 @@
 	const merchant = $derived(snap?.merchant_name ?? null);
 	const total = $derived(payment ? (payment.payable_amount ?? payment.amount) : 0);
 	const backUrl = $derived(safeHttpUrl(payment?.return_url ?? null));
+	const canRestart = $derived(snap?.can_restart ?? false);
 
 	async function load(current: string, silent: boolean) {
 		const seq = ++latest;
@@ -111,6 +114,23 @@
 			await load(token, true);
 		} finally {
 			connecting = null;
+		}
+	}
+
+	async function restart() {
+		if (restarting) return;
+		restarting = true;
+		failed = null;
+		const seq = ++latest;
+		try {
+			const next = await snapApi.restart(token);
+			if (seq === latest) snap = next;
+		} catch (error) {
+			toast.error(errorMessage(error));
+			// Another tab may have started it over, or it was paid meanwhile: show what the server holds.
+			await load(token, true);
+		} finally {
+			restarting = false;
 		}
 	}
 
@@ -181,7 +201,7 @@
 					{/each}
 				</div>
 			</div>
-		{:else if payment.status === 'pending' && payment.instructions}
+		{:else if payment.status === 'pending' && payment.instructions && !canRestart}
 			<InstructionsView
 				{payment}
 				instructions={payment.instructions}
@@ -189,6 +209,19 @@
 				{simulating}
 				autoRedirect={!page.url.searchParams.has('paused')}
 				onsimulate={simulate}
+			/>
+		{:else if payment.status === 'pending' && canRestart}
+			<AmountBlock amount={total} size="xl" />
+			<OrderMeta orderId={payment.order_id} description={payment.description} />
+			<RestartPanel
+				title={Date.parse(payment.expires_at) <= Date.now()
+					? 'This payment ran out of time'
+					: 'Your payment has not been started'}
+				detail={Date.parse(payment.expires_at) <= Date.now()
+					? 'The time to pay ended. Only start again if you have not already paid.'
+					: 'Start it to continue to the payment page.'}
+				{restarting}
+				onrestart={restart}
 			/>
 		{:else if payment.status === 'pending'}
 			<AmountBlock amount={total} size="xl">
@@ -205,7 +238,18 @@
 				onpick={pay}
 			/>
 		{:else}
-			<PaymentResult {payment} merchantName={merchant ?? ''} />
+			<PaymentResult {payment} merchantName={merchant ?? ''} restartable={canRestart}>
+				{#snippet actions()}
+					{#if canRestart}
+						<RestartPanel
+							title="Pay this order again"
+							detail="This payment ran out of time. Start it again and choose how to pay. Only do this if you have not already paid."
+							{restarting}
+							onrestart={restart}
+						/>
+					{/if}
+				{/snippet}
+			</PaymentResult>
 		{/if}
 	</div>
 </SnapShell>

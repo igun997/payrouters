@@ -87,6 +87,10 @@ pub struct ChargeOutput {
     pub provider_data: Value,
     /// Exact total to pay when the provider adds its fee on top of `amount`.
     pub payable_amount: Option<i64>,
+    /// The deadline the provider actually enforces, when it differs from the one asked for (it caps
+    /// or raises it): the payment's `expires_at` becomes this, so the Snap page and the worker agree
+    /// with the provider. `None` keeps the requested deadline.
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// What the customer is really charged when the provider cannot take rupiah (PayPal): the amount in
@@ -328,4 +332,63 @@ pub fn str_field<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
 pub fn minutes_until(expires_at: DateTime<Utc>) -> i64 {
     let secs = (expires_at - Utc::now()).num_seconds().max(60);
     (secs + 59) / 60
+}
+
+/// The deadline a provider enforces when it cannot honour `requested`: capped to `max` from now, or
+/// raised to `min` from now. `None` when `requested` is acceptable as it is.
+pub fn enforced_expiry(
+    requested: DateTime<Utc>,
+    min: Option<chrono::Duration>,
+    max: Option<chrono::Duration>,
+) -> Option<DateTime<Utc>> {
+    let now = Utc::now();
+    let left = requested - now;
+    match (min, max) {
+        (_, Some(max)) if left > max => Some(now + max),
+        (Some(min), _) if left < min => Some(now + min),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod expiry_tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn a_deadline_the_provider_accepts_is_left_alone() {
+        let at = Utc::now() + Duration::hours(2);
+        assert_eq!(
+            enforced_expiry(at, Some(Duration::minutes(10)), Some(Duration::hours(24))),
+            None
+        );
+        assert_eq!(enforced_expiry(at, None, None), None);
+    }
+
+    #[test]
+    fn a_longer_deadline_is_capped_and_a_shorter_one_raised() {
+        let far = Utc::now() + Duration::days(10);
+        let capped = enforced_expiry(far, None, Some(Duration::hours(24))).unwrap();
+        assert!(
+            (capped - Utc::now() - Duration::hours(24))
+                .num_seconds()
+                .abs()
+                <= 1
+        );
+
+        let soon = Utc::now() + Duration::minutes(5);
+        let raised = enforced_expiry(soon, Some(Duration::minutes(10)), None).unwrap();
+        assert!(
+            (raised - Utc::now() - Duration::minutes(10))
+                .num_seconds()
+                .abs()
+                <= 1
+        );
+        // a minimum alone never shortens, a maximum alone never lengthens
+        assert_eq!(
+            enforced_expiry(far, Some(Duration::minutes(10)), None),
+            None
+        );
+        assert_eq!(enforced_expiry(soon, None, Some(Duration::hours(24))), None);
+    }
 }

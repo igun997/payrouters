@@ -5,11 +5,24 @@
 	import ResultHero from './result-hero.svelte';
 	import ReturnAction from './return-action.svelte';
 	import { METHOD_LABEL } from './method-meta';
+	import type { Snippet } from 'svelte';
 	import type { SnapPayment } from '#lib/api/types';
 	import { PROVIDER_LABEL, formatDateTime, formatIdr } from '#lib/format';
 	import { safeHttpUrl } from '#lib/url';
 
-	let { payment, merchantName }: { payment: SnapPayment; merchantName: string } = $props();
+	let {
+		payment,
+		merchantName,
+		restartable = false,
+		actions
+	}: {
+		payment: SnapPayment;
+		merchantName: string;
+		/** The payment can be started over: the customer is not sent back to the merchant on a timer. */
+		restartable?: boolean;
+		/** Extra actions under the outcome, e.g. starting an expired payment over. */
+		actions?: Snippet;
+	} = $props();
 
 	const paid = $derived(payment.status === 'paid');
 	// Design: receipt rows for paid and failed; cancelled and expired show the outcome only.
@@ -70,6 +83,8 @@
 		/>
 	{/if}
 
+	{@render actions?.()}
+
 	{#if payment.status === 'expired'}
 		<Banner tone="info" title="Already transferred?">
 			Banks can take a few minutes to confirm. Keep your transfer receipt and send the order ID {payment.order_id}
@@ -78,6 +93,6 @@
 	{/if}
 
 	{#if returnUrl}
-		<ReturnAction url={returnUrl} label={`Back to ${merchantName}`} />
+		<ReturnAction url={returnUrl} label={`Back to ${merchantName}`} auto={!restartable} />
 	{/if}
 </div>

@@ -413,7 +413,7 @@ const DEFS: &[Def] = &[
                     "description": { "type": "string" },
                     "customer": { "type": "object", "properties": { "name": { "type": "string" }, "email": { "type": "string" }, "phone": { "type": "string" } } },
                     "return_url": { "type": "string" },
-                    "expires_in": { "type": "integer", "minimum": 300, "description": "Seconds, default 86400." }
+                    "expires_in": { "type": "integer", "minimum": 300, "description": "Seconds, default 86400. The payment's expires_at is the deadline the provider enforces and can be shorter (IDRX 24 hours, Midtrans QRIS and Snap 7 days, PayPal about 3 hours)." }
                 }),
                 &["product_id", "amount"],
             )

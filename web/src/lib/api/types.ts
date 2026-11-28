@@ -393,6 +393,8 @@ export interface SnapState {
 	methods: SnapMethod[];
 	checkouts: SnapCheckout[];
 	allow_simulate: boolean;
+	/** The customer may start the payment over (`POST /snap/api/:token/restart`). */
+	can_restart: boolean;
 }
 
 export interface ApiErrorEnvelope {

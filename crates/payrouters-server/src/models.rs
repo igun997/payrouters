@@ -49,6 +49,8 @@ pub struct PaymentRow {
     pub updated_at: DateTime<Utc>,
     /// Created from the product's payment options: the provider is settled when the customer picks.
     pub routed: bool,
+    /// How many times the customer started the payment over from the Snap page.
+    pub restarts: i32,
     /// Only present on admin queries that join `products`.
     #[sqlx(default)]
     pub product_name: Option<String>,

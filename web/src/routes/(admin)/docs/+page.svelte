@@ -63,7 +63,11 @@
 			type: 'object',
 			note: 'Returned unchanged on the payment and in webhooks.'
 		},
-		{ name: 'expires_in', type: 'integer', note: 'Seconds. Default 86400, minimum 300.' },
+		{
+			name: 'expires_in',
+			type: 'integer',
+			note: 'Seconds. Default 86400, minimum 300. expires_at is the deadline the provider enforces, which can be shorter (IDRX 24 hours, Midtrans QRIS and Snap 7 days, PayPal about 3 hours). An expired payment can be started over from its Snap page.'
+		},
 		{
 			name: 'return_url',
 			type: 'string',
@@ -107,6 +111,16 @@
 			status: '409',
 			code: 'method_already_selected',
 			note: 'The payment already has payment instructions.'
+		},
+		{
+			status: '409',
+			code: 'payment_not_restartable',
+			note: 'Snap restart: the payment can still be paid, or it is paid, failed or cancelled.'
+		},
+		{
+			status: '409',
+			code: 'restart_limit',
+			note: 'Snap restart: the payment was already started over five times.'
 		},
 		{
 			status: '422',

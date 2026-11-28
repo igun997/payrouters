@@ -326,6 +326,7 @@ impl ProviderAdapter for Xendit {
             provider_ref: str_field(&reply.json, "payment_request_id").map(str::to_string),
             provider_data: json!({ "kind": "payment_request" }),
             payable_amount: None,
+            expires_at: None,
         })
     }
 
@@ -355,6 +356,11 @@ impl ProviderAdapter for Xendit {
             provider_ref: str_field(&reply.json, "payment_session_id").map(str::to_string),
             provider_data: json!({ "kind": "session" }),
             payable_amount: None,
+            expires_at: enforced_expiry(
+                input.expires_at,
+                Some(SESSION_MIN_LIFETIME + chrono::Duration::seconds(30)),
+                None,
+            ),
         })
     }
 

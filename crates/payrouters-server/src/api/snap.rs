@@ -21,6 +21,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/{token}", get(show))
         .route("/{token}/pay", post(pay))
+        .route("/{token}/restart", post(restart))
         .route("/{token}/simulate", post(simulate))
         .route("/{token}/return", get(returned))
         .route("/{token}/cancel", get(cancelled))
@@ -57,6 +58,9 @@ struct SnapView {
     /// Provider-hosted checkouts the customer can pick (PayPal, Mayar, ...).
     checkouts: Vec<SnapCheckout>,
     allow_simulate: bool,
+    /// The customer may start the payment over (`POST .../restart`): it expired, or waits for a
+    /// hosted checkout that was never created.
+    can_restart: bool,
 }
 
 #[derive(Serialize)]
@@ -136,6 +140,11 @@ async fn view(state: &AppState, row: &PaymentRow) -> Result<SnapView> {
     } else {
         (vec![], vec![])
     };
+    let waiting = selectable
+        && methods.is_empty()
+        && checkouts.is_empty()
+        && payments::hosted_now(state, row).await?.is_some();
+    let can_restart = payments::restartable(row, waiting);
     Ok(SnapView {
         merchant_name: row.product_name.clone().unwrap_or_default(),
         payment: SnapPayment {
@@ -159,6 +168,7 @@ async fn view(state: &AppState, row: &PaymentRow) -> Result<SnapView> {
         methods,
         checkouts,
         allow_simulate: provider == Provider::Mock && status == PaymentStatus::Pending,
+        can_restart,
     })
 }
 
@@ -189,6 +199,16 @@ async fn pay(
         }
     };
     let row = payments::choose(&state, &token, choice).await?;
+    Ok(Json(view(&state, &row).await?))
+}
+
+/// The customer starts an expired payment over. `409 payment_not_restartable` while it can still be
+/// paid (or is paid, failed or cancelled), `409 restart_limit` after too many start-overs.
+async fn restart(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<SnapView>> {
+    let row = payments::restart(&state, &token).await?;
     Ok(Json(view(&state, &row).await?))
 }
 

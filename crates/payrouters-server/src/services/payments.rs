@@ -329,8 +329,8 @@ pub async fn create(
         "INSERT INTO payments
            (id, product_id, provider_account_id, order_id, mode, provider, status, amount, checkout,
             snap_token, description, customer, items, metadata, return_url, provider_options,
-            expires_at, method, routed)
-         VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            expires_at, method, routed, window_secs)
+         VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          RETURNING *",
     )
     .bind(id)
@@ -351,6 +351,7 @@ pub async fn create(
     .bind(expires_at)
     .bind(req.method.map(|m| m.as_str()))
     .bind(routed)
+    .bind(v.expires_in)
     .fetch_one(&state.pool)
     .await;
     let row = match inserted {
@@ -463,7 +464,8 @@ async fn store_charge(
          SET instructions = $2, provider_ref = $3, provider_data = $4, payable_amount = $5,
              method = $6, provider = COALESCE($7::text, provider),
              provider_account_id = COALESCE($8::uuid, provider_account_id),
-             last_synced_at = now(), updated_at = now()
+             last_synced_at = now(), updated_at = now(),
+             expires_at = COALESCE($9::timestamptz, expires_at)
          WHERE id = $1",
     )
     .bind(id)
@@ -474,6 +476,7 @@ async fn store_charge(
     .bind(method.map(|m| m.as_str()))
     .bind(account.map(|a| a.provider.as_str()))
     .bind(account.map(|a| a.id))
+    .bind(out.expires_at)
     .execute(&state.pool)
     .await?;
     get(state, id).await
@@ -545,6 +548,16 @@ pub async fn choose(state: &AppState, token: &str, choice: Choice) -> Result<Pay
         ));
     }
     let provider = target_provider(state, &row, choice).await?;
+    start_choice(state, &row, choice, provider).await
+}
+
+/// Claim `choice` for the payment and create its charge on `provider`.
+async fn start_choice(
+    state: &AppState,
+    row: &PaymentRow,
+    choice: Choice,
+    provider: Provider,
+) -> Result<PaymentRow> {
     let adapter = providers::adapter(provider);
     let info = adapter.info();
     match choice {
@@ -592,7 +605,7 @@ pub async fn choose(state: &AppState, token: &str, choice: Choice) -> Result<Pay
         ));
     }
 
-    match charge_choice(state, &row, choice, provider, adapter, &info).await {
+    match charge_choice(state, row, choice, provider, adapter, &info).await {
         Ok(paid_row) => Ok(paid_row),
         Err(e) => {
             sqlx::query(
@@ -605,6 +618,118 @@ pub async fn choose(state: &AppState, token: &str, choice: Choice) -> Result<Pay
             Err(e)
         }
     }
+}
+
+/// How many times a customer may start one payment over.
+pub const MAX_RESTARTS: i32 = 5;
+
+/// The provider whose hosted checkout is created without asking the customer: the payment asked for
+/// a hosted checkout, its product offers one hosted option and no methods, or its provider has no
+/// standard method left to pick. `None` when the customer chooses on the Snap page.
+pub async fn hosted_now(state: &AppState, row: &PaymentRow) -> Result<Option<Provider>> {
+    if row.checkout()? == Checkout::Provider {
+        return Ok(Some(row.provider()?));
+    }
+    if row.routed
+        && let Some(usable) = options::usable(state, row.product_id, row.mode()?).await?
+        && !usable.is_empty()
+    {
+        let picker = options::picker(&usable);
+        return Ok(
+            match (picker.methods.is_empty(), picker.checkouts.as_slice()) {
+                (true, [only]) => Some(*only),
+                _ => None,
+            },
+        );
+    }
+    let provider = row.provider()?;
+    let info = providers::adapter(provider).info();
+    let nothing_to_pick = info.methods.is_empty()
+        || (info.supports_provider_checkout
+            && availability::all_inactive(row.provider_account_id, &info.methods));
+    Ok(nothing_to_pick.then_some(provider))
+}
+
+/// Whether the customer may start this payment over: it ran out of time (`expired`, or pending past
+/// its deadline before the worker closed it), or it waits for a hosted checkout that was never
+/// created (`no_checkout`). A start-over is capped at [`MAX_RESTARTS`]; creating the missing
+/// checkout is not a start-over.
+pub fn restartable(row: &PaymentRow, no_checkout: bool) -> bool {
+    match row.status.as_str() {
+        "expired" => row.restarts < MAX_RESTARTS,
+        "pending" if row.expires_at <= Utc::now() => row.restarts < MAX_RESTARTS,
+        "pending" => no_checkout,
+        _ => false,
+    }
+}
+
+/// Snap: the customer starts a payment over. An expired payment (or one past its deadline that the
+/// provider has not reported paid) is reopened for its original window: the provider charge is
+/// forgotten, the provider reference is kept as an earlier attempt, and the customer picks again;
+/// when nothing is left to pick, the hosted checkout is created again straight away.
+pub async fn restart(state: &AppState, token: &str) -> Result<PaymentRow> {
+    let mut row = get_by_token(state, token).await?;
+    let overdue = row.status()? == PaymentStatus::Pending && row.expires_at <= Utc::now();
+    if overdue && row.instructions.is_some() && row.provider != Provider::Mock.as_str() {
+        // Money may have arrived before the worker noticed.
+        if let Err(e) = sync(state, row.id).await {
+            tracing::warn!(payment = %row.id, error = %e, "sync before restart failed");
+        }
+        row = get_by_token(state, token).await?;
+    }
+    let hosted = hosted_now(state, &row).await?;
+    let status = row.status()?;
+    let waiting = status == PaymentStatus::Pending
+        && row.expires_at > Utc::now()
+        && row.instructions.is_none()
+        && row.method.is_none()
+        && hosted.is_some();
+    if !restartable(&row, waiting) {
+        return Err(match status {
+            PaymentStatus::Pending if row.expires_at > Utc::now() => {
+                AppError::conflict("payment_not_restartable", "this payment can still be paid")
+            }
+            PaymentStatus::Expired | PaymentStatus::Pending => AppError::conflict(
+                "restart_limit",
+                "this payment was started over too many times; ask the merchant for a new one",
+            ),
+            _ => AppError::conflict(
+                "payment_not_restartable",
+                "only an expired payment can be started over",
+            ),
+        });
+    }
+    if !waiting {
+        let reset = sqlx::query(
+            "UPDATE payments
+             SET status = 'pending', instructions = NULL, method = NULL, payable_amount = NULL,
+                 fee_amount = NULL, net_amount = NULL, paid_at = NULL,
+                 provider_data = '{}'::jsonb, last_synced_at = NULL,
+                 previous_refs = CASE WHEN provider_ref IS NULL THEN previous_refs
+                                      ELSE array_append(previous_refs, provider_ref) END,
+                 provider_ref = NULL,
+                 expires_at = now() + make_interval(secs => COALESCE(window_secs, $3)::double precision),
+                 restarts = restarts + 1, updated_at = now()
+             WHERE id = $1 AND restarts < $2
+               AND (status = 'expired' OR (status = 'pending' AND expires_at <= now()))",
+        )
+        .bind(row.id)
+        .bind(MAX_RESTARTS)
+        .bind(DEFAULT_EXPIRES_IN)
+        .execute(&state.pool)
+        .await?;
+        if reset.rows_affected() == 0 {
+            return Err(AppError::conflict(
+                "payment_not_restartable",
+                "this payment changed; reload the page",
+            ));
+        }
+        row = get_by_token(state, token).await?;
+    }
+    if let Some(provider) = hosted {
+        return start_choice(state, &row, Choice::Checkout(provider), provider).await;
+    }
+    Ok(row)
 }
 
 async fn charge_choice(
@@ -1092,6 +1217,7 @@ mod tests {
                 provider_ref: Some("snap-token".into()),
                 provider_data: json!({ "kind": "snap" }),
                 payable_amount: None,
+                expires_at: None,
             })
         }
 

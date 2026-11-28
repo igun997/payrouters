@@ -427,6 +427,7 @@ fn direct_output_from_payload(
         provider_ref: Some(merchant_order_id.to_string()),
         provider_data: json!({ "kind": "direct_va" }),
         payable_amount: total,
+        expires_at: None,
     })
 }
 
@@ -580,6 +581,11 @@ impl ProviderAdapter for Idrx {
                 .and_then(|v| v.as_str().map(str::to_string)),
             provider_data: json!({ "kind": "direct_va" }),
             payable_amount: total,
+            expires_at: enforced_expiry(
+                input.expires_at,
+                None,
+                Some(chrono::Duration::minutes(MAX_EXPIRY_MINUTES)),
+            ),
         })
     }
 
@@ -606,6 +612,11 @@ impl ProviderAdapter for Idrx {
                 .and_then(|v| v.as_str().map(str::to_string)),
             provider_data: json!({ "kind": "hosted" }),
             payable_amount: None,
+            expires_at: enforced_expiry(
+                input.expires_at,
+                None,
+                Some(chrono::Duration::minutes(MAX_EXPIRY_MINUTES)),
+            ),
         })
     }
 

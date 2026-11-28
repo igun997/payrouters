@@ -1,21 +1,22 @@
 <script lang="ts">
 	/*
 	 * Sends the customer back to the merchant after a terminal status. Counts down, can be cancelled;
-	 * the button is always available.
+	 * the button is always available. With `auto` off (the payment can be started over) it is only
+	 * the button: the customer has a choice to make first.
 	 */
 	import { Button } from '#lib/components/ui/button';
 	import { navigateTo } from '#lib/url';
 
 	const SECONDS = 3;
 
-	let { url, label }: { url: string; label: string } = $props();
+	let { url, label, auto = true }: { url: string; label: string; auto?: boolean } = $props();
 
 	let left = $state(SECONDS);
 	let cancelled = $state(false);
 	const host = $derived(new URL(url).host);
 
 	$effect(() => {
-		if (cancelled) return;
+		if (cancelled || !auto) return;
 		if (left <= 0) {
 			navigateTo(url);
 			return;
@@ -26,7 +27,7 @@
 </script>
 
 <div class="flex flex-col items-center gap-3 text-center">
-	{#if !cancelled}
+	{#if !cancelled && auto}
 		<p
 			class="flex flex-wrap items-center justify-center gap-x-2 text-helper text-muted-foreground"
 			role="status"

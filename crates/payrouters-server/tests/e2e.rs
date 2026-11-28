@@ -1684,3 +1684,166 @@ async fn a_product_can_combine_providers_through_its_payment_options(pool: PgPoo
     let all = app.product("GET", "/v1/methods", &key, None).await;
     assert_eq!(all.json["data"].as_array().unwrap().len(), 4);
 }
+
+async fn snap_call(app: &App, token: &str, method: &str, path: &str) -> Reply {
+    app.call(method, &format!("/snap/api/{token}{path}"), None, &[], None)
+        .await
+}
+
+async fn make_overdue(pool: &PgPool, id: &str) {
+    sqlx::query("UPDATE payments SET expires_at = now() - interval '1 hour' WHERE id = $1::uuid")
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_expired_payment_can_be_started_over_and_a_payment_on_it_still_settles(pool: PgPool) {
+    let app = App::new(pool.clone()).await;
+    let key_s = "SB-Mid-server-restart";
+    let (account, _) = app
+        .provider("midtrans", "sandbox", json!({ "server_key": key_s }))
+        .await;
+    let (_pid, _s, key, _) = app.product_with_keys("Shop", None).await;
+    let p = app
+        .product(
+            "POST",
+            "/v1/payments",
+            &key,
+            Some(json!({ "order_id": "R1", "amount": 50000, "provider": "midtrans", "expires_in": 600 })),
+        )
+        .await;
+    assert_eq!(p.status, StatusCode::CREATED, "{}", p.text);
+    let id = p.json["id"].as_str().unwrap().to_string();
+    let token = token_of(p.json["snap_url"].as_str().unwrap()).to_string();
+
+    // still payable: nothing to start over
+    let view = snap_call(&app, &token, "GET", "").await;
+    assert_eq!(view.json["can_restart"], false);
+    let early = snap_call(&app, &token, "POST", "/restart").await;
+    assert_eq!(early.status, StatusCode::CONFLICT);
+    assert_eq!(early.json["error"]["code"], "payment_not_restartable");
+
+    // it runs out of time and the worker closes it
+    make_overdue(&pool, &id).await;
+    worker::tick(&app.state).await.unwrap();
+    let view = snap_call(&app, &token, "GET", "").await;
+    assert_eq!(view.json["payment"]["status"], "expired");
+    assert_eq!(view.json["can_restart"], true);
+
+    // starting over reopens the same payment for the window it was created with
+    let again = snap_call(&app, &token, "POST", "/restart").await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text);
+    assert_eq!(again.json["payment"]["status"], "pending");
+    assert_eq!(again.json["payment"]["id"], json!(id));
+    assert_eq!(again.json["can_restart"], false);
+    assert!(
+        !again.json["methods"].as_array().unwrap().is_empty(),
+        "the customer picks again"
+    );
+    let (left, restarts): (f64, i32) = sqlx::query_as(
+        "SELECT extract(epoch FROM expires_at - now())::float8, restarts
+         FROM payments WHERE id = $1::uuid",
+    )
+    .bind(&id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!((590.0..=600.0).contains(&left), "window was {left}s");
+    assert_eq!(restarts, 1);
+
+    // a customer who paid the earlier attempt late is still credited, once
+    make_overdue(&pool, &id).await;
+    worker::tick(&app.state).await.unwrap();
+    let hook = midtrans_notification(&id, "50000.00", "settlement", key_s);
+    assert_eq!(
+        app.call("POST", &format!("/hooks/{account}"), None, &[], Some(hook))
+            .await
+            .status,
+        StatusCode::OK
+    );
+    let got = app
+        .product("GET", &format!("/v1/payments/{id}"), &key, None)
+        .await;
+    assert_eq!(got.json["status"], "paid");
+    let view = snap_call(&app, &token, "GET", "").await;
+    assert_eq!(view.json["can_restart"], false);
+    let paid = snap_call(&app, &token, "POST", "/restart").await;
+    assert_eq!(paid.status, StatusCode::CONFLICT);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_restart_forgets_the_charge_keeps_its_reference_and_is_capped(pool: PgPool) {
+    let app = App::new(pool.clone()).await;
+    let (_pid, _s, key, _) = app.product_with_keys("Shop", None).await;
+    let p = app
+        .product(
+            "POST",
+            "/v1/payments",
+            &key,
+            Some(
+                json!({ "order_id": "R2", "amount": 50000, "provider": "mock", "method": "qris" }),
+            ),
+        )
+        .await;
+    assert_eq!(p.status, StatusCode::CREATED, "{}", p.text);
+    let id = p.json["id"].as_str().unwrap().to_string();
+    let token = token_of(p.json["snap_url"].as_str().unwrap()).to_string();
+    assert!(!p.json["instructions"].is_null());
+    let (old_ref,): (Option<String>,) =
+        sqlx::query_as("SELECT provider_ref FROM payments WHERE id = $1::uuid")
+            .bind(&id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let old_ref = old_ref.unwrap();
+
+    // past its deadline but not yet closed by the worker: it can be started over already
+    make_overdue(&pool, &id).await;
+    let view = snap_call(&app, &token, "GET", "").await;
+    assert_eq!(view.json["can_restart"], true);
+    let again = snap_call(&app, &token, "POST", "/restart").await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text);
+    assert!(again.json["payment"]["instructions"].is_null());
+    assert!(again.json["payment"]["method"].is_null());
+    let (provider_ref, previous, status): (Option<String>, Vec<String>, String) = sqlx::query_as(
+        "SELECT provider_ref, previous_refs, status FROM payments WHERE id = $1::uuid",
+    )
+    .bind(&id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (provider_ref, previous, status.as_str()),
+        (None, vec![old_ref], "pending")
+    );
+
+    // the customer picks again on the same payment
+    let picked = app
+        .call(
+            "POST",
+            &format!("/snap/api/{token}/pay"),
+            None,
+            &[],
+            Some(json!({ "method": "va_bca" }).to_string()),
+        )
+        .await;
+    assert_eq!(picked.status, StatusCode::OK, "{}", picked.text);
+    assert_eq!(picked.json["payment"]["method"], "va_bca");
+
+    // after the last allowed start-over the page stops offering one
+    sqlx::query("UPDATE payments SET restarts = 5 WHERE id = $1::uuid")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    make_overdue(&pool, &id).await;
+    worker::tick(&app.state).await.unwrap();
+    let view = snap_call(&app, &token, "GET", "").await;
+    assert_eq!(view.json["payment"]["status"], "expired");
+    assert_eq!(view.json["can_restart"], false);
+    let refused = snap_call(&app, &token, "POST", "/restart").await;
+    assert_eq!(refused.status, StatusCode::CONFLICT);
+    assert_eq!(refused.json["error"]["code"], "restart_limit");
+}
