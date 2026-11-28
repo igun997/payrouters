@@ -63,9 +63,9 @@ fn view(row: &PaymentRow) -> Result<SnapView> {
         && row.method.is_none()
         && row.expires_at > Utc::now();
     let methods = if selectable {
-        providers::adapter(provider)
-            .info()
-            .methods
+        // Methods the provider has refused for this account are not offered while any other is.
+        let all = providers::adapter(provider).info().methods;
+        providers::availability::offered(row.provider_account_id, &all)
             .iter()
             .map(|m| m.info())
             .collect()

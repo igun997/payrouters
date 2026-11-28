@@ -11,6 +11,7 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+pub mod availability;
 pub mod fx;
 pub mod idrx;
 pub mod mayar;
@@ -62,6 +63,7 @@ pub struct ProviderInfo {
     pub methods: Vec<Method>,
 }
 
+#[derive(Clone, Copy)]
 pub struct ChargeInput<'a> {
     pub payment_id: Uuid,
     pub order_id: &'a str,
@@ -146,6 +148,11 @@ pub enum ProviderError {
     /// Transport failure or provider 5xx.
     #[error("{0}")]
     Unavailable(String),
+    /// The provider says this payment channel (or the API behind it) is not activated on the
+    /// account. Remembered by [`availability`], and the payment falls back to the provider's
+    /// hosted checkout where there is one.
+    #[error("{0}")]
+    ChannelInactive(String),
     #[error("{0}")]
     Config(String),
 }

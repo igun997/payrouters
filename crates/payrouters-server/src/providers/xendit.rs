@@ -258,6 +258,19 @@ fn error_detail(reply: &HttpReply) -> Option<String> {
     })
 }
 
+/// A refused charge. A channel Xendit has not activated for the account is a fact about the account.
+fn charge_error(reply: &HttpReply) -> ProviderError {
+    let detail = error_detail(reply);
+    if str_field(&reply.json, "error_code") == Some("CHANNEL_NOT_ACTIVATED") {
+        return ProviderError::ChannelInactive(format!(
+            "Xendit responded {}: {}",
+            reply.status,
+            detail.unwrap_or_default()
+        ));
+    }
+    fail_by_status("Xendit", reply, detail)
+}
+
 #[async_trait]
 impl ProviderAdapter for Xendit {
     fn info(&self) -> ProviderInfo {
@@ -303,7 +316,7 @@ impl ProviderAdapter for Xendit {
         )
         .await?;
         if !(200..300).contains(&reply.status) {
-            return Err(fail_by_status("Xendit", &reply, error_detail(&reply)));
+            return Err(charge_error(&reply));
         }
         let instructions = parse_actions(method, &reply.json).ok_or_else(|| {
             ProviderError::Unavailable("Xendit response lacked payment instructions".into())
@@ -636,5 +649,24 @@ mod tests {
         });
         let parsed = parse_event(&body).unwrap();
         assert_eq!(parsed.update.unwrap().amount, Some(150_000));
+    }
+
+    #[test]
+    fn a_channel_xendit_has_not_activated_is_flagged() {
+        let inactive = HttpReply {
+            status: 403,
+            json: json!({ "error_code": "CHANNEL_NOT_ACTIVATED", "message": "channel not activated" }),
+            text: String::new(),
+        };
+        assert!(matches!(
+            charge_error(&inactive),
+            ProviderError::ChannelInactive(_)
+        ));
+        let invalid = HttpReply {
+            status: 400,
+            json: json!({ "error_code": "API_VALIDATION_ERROR", "message": "bad" }),
+            text: String::new(),
+        };
+        assert!(matches!(charge_error(&invalid), ProviderError::Rejected(_)));
     }
 }

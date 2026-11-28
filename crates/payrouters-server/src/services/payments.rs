@@ -13,7 +13,10 @@ use super::accounts::{self, AccountRecord};
 use super::outbound;
 use crate::error::{AppError, Result, is_unique_violation};
 use crate::models::PaymentRow;
-use crate::providers::{self, ChargeInput, ChargeOutput, PaymentRef, ProviderError, StatusUpdate};
+use crate::providers::{
+    self, ChargeInput, ChargeOutput, PaymentRef, ProviderAdapter, ProviderCtx, ProviderError,
+    ProviderInfo, StatusUpdate, availability,
+};
 use crate::state::AppState;
 use crate::util::{new_id, random_token};
 
@@ -56,7 +59,44 @@ pub async fn get_by_token(state: &AppState, token: &str) -> Result<PaymentRow> {
 fn provider_err(e: ProviderError) -> AppError {
     match e {
         ProviderError::Rejected(m) | ProviderError::Unavailable(m) => AppError::Provider(m),
+        ProviderError::ChannelInactive(m) => AppError::unprocessable("channel_not_activated", m),
         ProviderError::Config(m) => AppError::unprocessable("provider_unavailable", m),
+    }
+}
+
+/// A charge for a standard method. When the provider says the account has not activated that channel
+/// (Midtrans' Core API needs its own activation, whatever the dashboard lists), the method is
+/// remembered as inactive for the account and the payment goes to the provider's hosted checkout
+/// instead, where there is one. A method already known to be inactive skips the doomed call.
+/// Returns the charge and whether the hosted checkout stood in for the method.
+async fn charge_standard(
+    adapter: &dyn ProviderAdapter,
+    ctx: &ProviderCtx<'_>,
+    input: &ChargeInput<'_>,
+    info: &ProviderInfo,
+) -> std::result::Result<(ChargeOutput, bool), ProviderError> {
+    let Some(method) = input.method else {
+        return Err(ProviderError::Rejected("method required".into()));
+    };
+    let hosted = ChargeInput {
+        method: None,
+        ..*input
+    };
+    if info.supports_provider_checkout && availability::is_inactive(ctx.account_id, method) {
+        return adapter.create_hosted(ctx, &hosted).await.map(|o| (o, true));
+    }
+    match adapter.create_charge(ctx, input).await {
+        Ok(out) => Ok((out, false)),
+        Err(ProviderError::ChannelInactive(why)) => {
+            availability::mark_inactive(ctx.account_id, method);
+            tracing::warn!(account = %ctx.account_id, %method, %why, "channel not activated on the provider account");
+            if info.supports_provider_checkout {
+                adapter.create_hosted(ctx, &hosted).await.map(|o| (o, true))
+            } else {
+                Err(ProviderError::ChannelInactive(why))
+            }
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -301,15 +341,29 @@ pub async fn create(
     };
 
     let ctx = account.ctx(state);
-    let charge: Option<std::result::Result<ChargeOutput, ProviderError>> =
+    let charge: Option<std::result::Result<(ChargeOutput, bool), ProviderError>> =
         match (v.checkout, req.method) {
-            (Checkout::Provider, _) => Some(adapter.create_hosted(&ctx, &input).await),
-            (Checkout::Snap, Some(_)) => Some(adapter.create_charge(&ctx, &input).await),
-            // A provider with no standard methods (Mayar, PayPal) has nothing for the customer to
-            // pick on the Snap page, so its hosted checkout is created straight away and the Snap
-            // page shows the hop to it.
-            (Checkout::Snap, None) if info.methods.is_empty() => {
-                Some(adapter.create_hosted(&ctx, &input).await)
+            (Checkout::Provider, _) => Some(
+                adapter
+                    .create_hosted(&ctx, &input)
+                    .await
+                    .map(|o| (o, false)),
+            ),
+            (Checkout::Snap, Some(_)) => Some(charge_standard(adapter, &ctx, &input, &info).await),
+            // A provider with no standard methods (Mayar, PayPal), or whose every method is known to
+            // be refused, has nothing for the customer to pick on the Snap page: its hosted checkout
+            // is created straight away and the Snap page shows the hop to it.
+            (Checkout::Snap, None)
+                if info.methods.is_empty()
+                    || (info.supports_provider_checkout
+                        && availability::all_inactive(account.id, &info.methods)) =>
+            {
+                Some(
+                    adapter
+                        .create_hosted(&ctx, &input)
+                        .await
+                        .map(|o| (o, false)),
+                )
             }
             (Checkout::Snap, None) => None,
         };
@@ -317,8 +371,12 @@ pub async fn create(
         return Ok((get(state, row.id).await?, false));
     };
     match charge {
-        Ok(out) => Ok((store_charge(state, row.id, out, req.method).await?, false)),
+        Ok((out, fell_back)) => {
+            let method = if fell_back { None } else { req.method };
+            Ok((store_charge(state, row.id, out, method).await?, false))
+        }
         Err(e) => {
+            tracing::warn!(provider = %account.provider, payment = %row.id, error = %e, "provider charge failed");
             // The order never existed from the product's point of view: free the order_id.
             sqlx::query("DELETE FROM payments WHERE id = $1 AND instructions IS NULL")
                 .bind(row.id)
@@ -373,7 +431,7 @@ async fn store_charge(
     sqlx::query(
         "UPDATE payments
          SET instructions = $2, provider_ref = $3, provider_data = $4, payable_amount = $5,
-             method = COALESCE($6, method), last_synced_at = now(), updated_at = now()
+             method = $6, last_synced_at = now(), updated_at = now()
          WHERE id = $1",
     )
     .bind(id)
@@ -410,7 +468,8 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
     }
     let provider = row.provider()?;
     let adapter = providers::adapter(provider);
-    if !adapter.info().methods.contains(&method) {
+    let info = adapter.info();
+    if !info.methods.contains(&method) {
         return Err(AppError::unprocessable(
             "method_unsupported",
             format!("{} does not support {method}", provider.label()),
@@ -451,14 +510,20 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
         method: Some(method),
     };
     let result = match adapter.validate(&account.creds, &input, false) {
-        Ok(()) => adapter
-            .create_charge(&account.ctx(state), &input)
+        Ok(()) => charge_standard(adapter, &account.ctx(state), &input, &info)
             .await
-            .map_err(provider_err),
+            .map_err(|e| {
+                tracing::warn!(%provider, payment = %row.id, error = %e, "provider charge failed");
+                provider_err(e)
+            }),
         Err(m) => Err(AppError::BadRequest(m)),
     };
     match result {
-        Ok(out) => store_charge(state, row.id, out, Some(method)).await,
+        Ok((out, fell_back)) => {
+            // On the hosted checkout the customer chooses there: no method is recorded.
+            let method = if fell_back { None } else { Some(method) };
+            store_charge(state, row.id, out, method).await
+        }
         Err(e) => {
             sqlx::query("UPDATE payments SET method = NULL, updated_at = now() WHERE id = $1 AND instructions IS NULL")
                 .bind(row.id)
@@ -820,5 +885,211 @@ mod tests {
         assert!(validate(&items).is_err());
         items.items[0].price = 500;
         assert!(validate(&items).is_ok());
+    }
+
+    // --- charge_standard ---------------------------------------------------------------------
+
+    use crate::providers::{Credentials, ParsedWebhook, WebhookError};
+    use async_trait::async_trait;
+    use axum::http::HeaderMap;
+    use payrouters_types::Instructions;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// An adapter whose core charge always answers with `refusal`, like a Midtrans account without
+    /// Core API access.
+    struct Fake {
+        hosted: bool,
+        refusal: fn() -> ProviderError,
+        core_calls: AtomicUsize,
+    }
+
+    impl Fake {
+        fn new(hosted: bool, refusal: fn() -> ProviderError) -> Fake {
+            Fake {
+                hosted,
+                refusal,
+                core_calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn core_calls(&self) -> usize {
+            self.core_calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl ProviderAdapter for Fake {
+        fn info(&self) -> ProviderInfo {
+            ProviderInfo {
+                provider: Provider::Mock,
+                supports_sandbox: true,
+                supports_provider_checkout: self.hosted,
+                credential_fields: vec![],
+                methods: vec![Method::Qris, Method::VaBca],
+            }
+        }
+
+        async fn create_charge(
+            &self,
+            _ctx: &ProviderCtx<'_>,
+            _input: &ChargeInput<'_>,
+        ) -> std::result::Result<ChargeOutput, ProviderError> {
+            self.core_calls.fetch_add(1, Ordering::SeqCst);
+            Err((self.refusal)())
+        }
+
+        async fn create_hosted(
+            &self,
+            _ctx: &ProviderCtx<'_>,
+            input: &ChargeInput<'_>,
+        ) -> std::result::Result<ChargeOutput, ProviderError> {
+            assert_eq!(input.method, None, "the hosted checkout has no method");
+            Ok(ChargeOutput {
+                instructions: Instructions::Redirect {
+                    url: "https://pay.example/hosted".into(),
+                },
+                provider_ref: Some("snap-token".into()),
+                provider_data: json!({ "kind": "snap" }),
+                payable_amount: None,
+            })
+        }
+
+        async fn fetch_status(
+            &self,
+            _ctx: &ProviderCtx<'_>,
+            _payment: &PaymentRef<'_>,
+        ) -> std::result::Result<Option<StatusUpdate>, ProviderError> {
+            Ok(None)
+        }
+
+        async fn parse_webhook(
+            &self,
+            _ctx: &ProviderCtx<'_>,
+            _headers: &HeaderMap,
+            _body: &[u8],
+        ) -> std::result::Result<ParsedWebhook, WebhookError> {
+            Err(WebhookError::Malformed("unused".into()))
+        }
+
+        async fn test_connection(
+            &self,
+            _ctx: &ProviderCtx<'_>,
+        ) -> std::result::Result<String, ProviderError> {
+            Ok("ok".into())
+        }
+    }
+
+    fn charge(method: Method) -> ChargeInput<'static> {
+        ChargeInput {
+            payment_id: Uuid::nil(),
+            order_id: "INV-1",
+            amount: 129_000,
+            expires_at: Utc::now() + Duration::hours(1),
+            description: None,
+            customer: None,
+            items: &[],
+            return_url: None,
+            snap_url: "https://pay.example.com/snap/t",
+            snap_api_url: "https://pay.example.com/snap/api/t",
+            provider_options: &Value::Null,
+            method: Some(method),
+        }
+    }
+
+    fn inactive() -> ProviderError {
+        ProviderError::ChannelInactive(
+            "Midtrans responded 402: Payment channel is not activated.".into(),
+        )
+    }
+
+    #[tokio::test]
+    async fn a_channel_the_provider_has_not_activated_falls_back_to_the_hosted_checkout() {
+        let adapter = Fake::new(true, inactive);
+        let (http, creds) = (reqwest::Client::new(), Credentials::default());
+        let ctx = ProviderCtx {
+            http: &http,
+            account_id: new_id(),
+            mode: Mode::Live,
+            creds: &creds,
+            public_base_url: "https://pay.example.com",
+        };
+        let info = adapter.info();
+
+        let (out, fell_back) = charge_standard(&adapter, &ctx, &charge(Method::Qris), &info)
+            .await
+            .unwrap();
+        assert!(fell_back);
+        assert!(matches!(out.instructions, Instructions::Redirect { .. }));
+        assert_eq!(adapter.core_calls(), 1);
+        assert!(availability::is_inactive(ctx.account_id, Method::Qris));
+
+        // Remembered: the next QRIS payment on this account goes straight to the hosted checkout.
+        let (_, again) = charge_standard(&adapter, &ctx, &charge(Method::Qris), &info)
+            .await
+            .unwrap();
+        assert!(again);
+        assert_eq!(adapter.core_calls(), 1);
+
+        // Another method has not been refused yet, so it is tried (and learned) on its own.
+        let (_, other) = charge_standard(&adapter, &ctx, &charge(Method::VaBca), &info)
+            .await
+            .unwrap();
+        assert!(other);
+        assert_eq!(adapter.core_calls(), 2);
+
+        // Another account is unaffected by what this one taught.
+        let ctx2 = ProviderCtx {
+            account_id: new_id(),
+            ..ctx
+        };
+        charge_standard(&adapter, &ctx2, &charge(Method::Qris), &info)
+            .await
+            .unwrap();
+        assert_eq!(adapter.core_calls(), 3);
+    }
+
+    #[tokio::test]
+    async fn without_a_hosted_checkout_the_refusal_is_reported_and_retried_next_time() {
+        let adapter = Fake::new(false, inactive);
+        let (http, creds) = (reqwest::Client::new(), Credentials::default());
+        let ctx = ProviderCtx {
+            http: &http,
+            account_id: new_id(),
+            mode: Mode::Live,
+            creds: &creds,
+            public_base_url: "https://pay.example.com",
+        };
+        let info = adapter.info();
+        for expected_calls in [1, 2] {
+            let err = charge_standard(&adapter, &ctx, &charge(Method::Qris), &info)
+                .await
+                .err()
+                .expect("no hosted checkout to fall back to");
+            assert!(matches!(err, ProviderError::ChannelInactive(_)));
+            assert_eq!(adapter.core_calls(), expected_calls);
+        }
+    }
+
+    #[tokio::test]
+    async fn other_refusals_are_neither_remembered_nor_replaced_by_the_hosted_checkout() {
+        let adapter = Fake::new(true, || ProviderError::Rejected("amount too small".into()));
+        let (http, creds) = (reqwest::Client::new(), Credentials::default());
+        let ctx = ProviderCtx {
+            http: &http,
+            account_id: new_id(),
+            mode: Mode::Live,
+            creds: &creds,
+            public_base_url: "https://pay.example.com",
+        };
+        let info = adapter.info();
+        for expected_calls in [1, 2] {
+            let err = charge_standard(&adapter, &ctx, &charge(Method::Qris), &info)
+                .await
+                .err()
+                .expect("a plain rejection is returned");
+            assert!(matches!(err, ProviderError::Rejected(_)));
+            assert_eq!(adapter.core_calls(), expected_calls);
+        }
+        assert!(!availability::is_inactive(ctx.account_id, Method::Qris));
     }
 }

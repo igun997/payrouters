@@ -346,6 +346,14 @@ fn check_reply(reply: &HttpReply) -> Result<(), ProviderError> {
             "{detail} (the server key is missing a permission: charges need Core API Write, Snap needs Snap Checkout Write, status checks need a Read permission; see Settings > Access Keys)"
         );
     }
+    // 402: the merchant has no access to this payment type. Midtrans' Core API is activated on its
+    // own (the dashboard can list a channel as active while every charge answers "Payment channel is
+    // not activated"), so this is a fact about the account, not about the request.
+    if code == 402 {
+        return Err(ProviderError::ChannelInactive(format!(
+            "Midtrans responded 402: {detail}"
+        )));
+    }
     let mut r = HttpReply {
         status: code,
         json: reply.json.clone(),
@@ -798,5 +806,33 @@ mod tests {
             &json!({ "order_id": "o-1", "transaction_status": "settlement" })
         ));
         assert!(is_payment_notification(&json!({ "gross_amount": "1.00" })));
+    }
+
+    #[test]
+    fn a_402_is_a_channel_the_account_does_not_have() {
+        let reply = HttpReply {
+            status: 200,
+            json: json!({ "status_code": "402", "status_message": "Payment channel is not activated." }),
+            text: String::new(),
+        };
+        match check_reply(&reply) {
+            Err(ProviderError::ChannelInactive(m)) => {
+                assert_eq!(
+                    m,
+                    "Midtrans responded 402: Payment channel is not activated."
+                )
+            }
+            other => panic!("expected ChannelInactive, got {other:?}"),
+        }
+        // other refusals stay plain rejections
+        let invalid = HttpReply {
+            status: 200,
+            json: json!({ "status_code": "400", "status_message": "Bad request" }),
+            text: String::new(),
+        };
+        assert!(matches!(
+            check_reply(&invalid),
+            Err(ProviderError::Rejected(_))
+        ));
     }
 }

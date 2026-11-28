@@ -255,6 +255,8 @@ async fn update(
     .bind(SqlJson(&fees))
     .execute(&state.pool)
     .await?;
+    // New credentials may have activated what was refused before: ask the provider again.
+    providers::availability::clear(id);
     let rec = accounts::load(&state, id).await?;
     Ok(Json(view(&state, &rec)))
 }
@@ -283,7 +285,10 @@ async fn test(State(state): State<AppState>, Path(id): Path<Uuid>) -> Result<Jso
     Ok(Json(match result {
         Ok(message) => json!({ "ok": true, "message": message }),
         Err(
-            ProviderError::Rejected(m) | ProviderError::Unavailable(m) | ProviderError::Config(m),
+            ProviderError::Rejected(m)
+            | ProviderError::Unavailable(m)
+            | ProviderError::ChannelInactive(m)
+            | ProviderError::Config(m),
         ) => {
             json!({ "ok": false, "message": m })
         }
