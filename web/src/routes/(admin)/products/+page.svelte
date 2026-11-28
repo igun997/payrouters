@@ -20,7 +20,6 @@
 	import ProductCard from '#lib/components/app/product-card.svelte';
 	import ProductForm from '#lib/components/app/product-form.svelte';
 	import PaymentOptionsDialog from '#lib/components/app/payment-options-dialog.svelte';
-	import { summarizePaymentOptions } from '#lib/payment-options';
 	import { blankProductForm, type ProductFormValues } from '#lib/product-form';
 	import OnboardingChecklist from '#lib/components/app/onboarding-checklist.svelte';
 	import type { ChecklistStep } from '#lib/checklist';
@@ -411,7 +410,8 @@
 					providerLabel={product.default_provider
 						? (labels[product.default_provider] ?? product.default_provider)
 						: 'No default'}
-					paymentSummary={summarizePaymentOptions(product.payment_options, labels, methodNames)}
+					providers={labels}
+					methods={methodNames}
 					expanded={!!expanded[product.id]}
 					onToggle={() => toggleKeys(product)}
 					onEdit={() => openEdit(product)}

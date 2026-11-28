@@ -1,21 +1,22 @@
 <script lang="ts">
 	/**
-	 * One product: identity, webhook URL, default provider and actions. The API keys are a
-	 * disclosure inside the card (the table is `ApiKeyTable`), so keys stay with their product.
-	 * Below lg the identity stacks above the actions, so the webhook URL keeps the card width.
+	 * One product: identity and actions on top, then what it is wired to (the webhook URL and the
+	 * payment options, with a button to edit them where they are shown), then the API keys as a
+	 * disclosure (the table is `ApiKeyTable`), so keys stay with their product.
+	 * From lg the identity and the actions share a row and the details sit in two columns; below lg
+	 * everything is one column: identity, details, keys box, then Edit / API keys.
 	 */
 	import type { ApiKey, Product } from '#lib/api/types';
 	import ApiKeyTable from '#lib/components/app/api-key-table.svelte';
 	import OverflowMenu, { type MenuItem } from '#lib/components/app/overflow-menu.svelte';
+	import PaymentOptionsSummary from '#lib/components/app/payment-options-summary.svelte';
 	import { Button } from '#lib/components/ui/button';
 	import Archive from '@lucide/svelte/icons/archive';
-	import Building from '@lucide/svelte/icons/landmark';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Wallet from '@lucide/svelte/icons/wallet';
-	import Pill from '#lib/components/app/pill.svelte';
 	import { cn } from '#lib/utils';
 	import { keyDate } from '#lib/key-format';
 	import { IsMobile } from '#lib/hooks/is-mobile.svelte';
@@ -23,7 +24,8 @@
 	let {
 		product,
 		providerLabel,
-		paymentSummary,
+		providers,
+		methods,
 		expanded,
 		onToggle,
 		onEdit,
@@ -36,8 +38,10 @@
 		product: Product;
 		/** Human label of the default provider, or "No default". */
 		providerLabel: string;
-		/** The payment options in one line, or "Single provider". */
-		paymentSummary: string;
+		/** Provider id → label, for the payment options. */
+		providers: Record<string, string>;
+		/** Method code → label, for the payment options. */
+		methods: Record<string, string>;
 		expanded: boolean;
 		onToggle: () => void;
 		onEdit: () => void;
@@ -61,6 +65,7 @@
 	);
 	const activeKeys = $derived(product.api_keys.filter((k) => !k.revoked_at).length);
 	const keysId = $derived(`product-${product.id}-keys`);
+	const configured = $derived(product.payment_options.length > 0);
 
 	const menuItems = $derived<MenuItem[]>([
 		{ label: 'Edit', icon: Pencil, onselect: onEdit },
@@ -70,36 +75,35 @@
 	]);
 </script>
 
-<!-- Below lg the card is one column: identity, keys box, then Edit / API keys (design order). -->
+<!-- Below lg the card is one column: identity, details, keys box, then Edit / API keys (design order). -->
 <article
 	class="rounded-lg border bg-card max-lg:flex max-lg:flex-col max-lg:gap-4 max-lg:p-card"
 	data-testid="product-row"
 	data-product-slug={product.slug}
 >
-	<div class="flex flex-col gap-4 p-card max-lg:contents lg:flex-row lg:items-center lg:gap-6">
-		<div
-			class="flex min-w-0 flex-1 flex-col gap-3 max-lg:order-1 lg:flex-row lg:items-center lg:gap-6"
-		>
-			<div class="flex min-w-0 items-center gap-3 lg:w-56 lg:shrink-0">
-				<span
-					class="flex size-11 shrink-0 items-center justify-center rounded-md bg-secondary text-label text-foreground lg:hidden"
-					aria-hidden="true"
-				>
-					{initials}
+	<div
+		class="flex flex-col gap-5 p-card max-lg:contents lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-x-6"
+	>
+		<div class="flex min-w-0 items-center gap-3 max-lg:order-1">
+			<span
+				class="flex size-11 shrink-0 items-center justify-center rounded-md bg-secondary text-label text-foreground"
+				aria-hidden="true"
+			>
+				{initials}
+			</span>
+			<div class="flex min-w-0 flex-col gap-0.5">
+				<h2 class="min-w-0 text-card-title break-words text-foreground">{product.name}</h2>
+				<span class="min-w-0 font-mono text-helper break-all text-muted-foreground">
+					{product.slug}
 				</span>
-				<div class="flex min-w-0 flex-col gap-0.5">
-					<h2 class="min-w-0 text-card-title break-words text-foreground">{product.name}</h2>
-					<span class="min-w-0 font-mono text-helper break-all text-muted-foreground">
-						{product.slug}
-					</span>
-				</div>
 			</div>
-			<div class="flex items-center justify-between gap-3 text-body lg:hidden">
-				<span class="text-muted-foreground">Default provider</span>
-				<span class="font-semibold">{providerLabel}</span>
-			</div>
-			<div class="flex min-w-0 flex-1 flex-col gap-1">
-				<span class="text-helper text-muted-foreground">Webhook URL</span>
+		</div>
+
+		<div
+			class="grid min-w-0 gap-5 max-lg:order-1 lg:col-span-2 lg:row-start-2 lg:grid-cols-2 lg:gap-8"
+		>
+			<div class="flex min-w-0 flex-col gap-2">
+				<span class="flex min-h-9 items-center text-helper text-muted-foreground">Webhook URL</span>
 				{#if product.webhook_url}
 					<span class="text-mono-id font-mono break-all text-foreground">
 						{product.webhook_url}
@@ -110,23 +114,34 @@
 					</span>
 				{/if}
 			</div>
-			<div class="flex min-w-0 flex-1 flex-col gap-1" data-testid="product-payment-options">
-				<span class="text-helper text-muted-foreground">Payment options</span>
-				<span class="text-body break-words text-foreground">{paymentSummary}</span>
+			<div class="flex min-w-0 flex-col gap-2" data-testid="product-payment-options">
+				<div class="flex min-w-0 items-center justify-between gap-3">
+					<span class="text-helper text-muted-foreground">Payment options</span>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={onPaymentOptions}
+						aria-label="{configured ? 'Manage' : 'Set up'} payment options of {product.name}"
+					>
+						<Wallet data-icon="inline-start" />
+						{configured ? 'Manage' : 'Set up'}
+					</Button>
+				</div>
+				<PaymentOptionsSummary
+					options={product.payment_options}
+					{providers}
+					{methods}
+					defaultLabel={providerLabel}
+				/>
 			</div>
 			<div class="flex items-center justify-between gap-3 text-body lg:hidden">
 				<span class="text-muted-foreground">Created</span>
 				<span class="tabular font-semibold">{keyDate(product.created_at)}</span>
 			</div>
-			<div class="hidden lg:block lg:shrink-0">
-				<Pill tone="neutral">
-					<Building class="size-3.5" />
-					{providerLabel}
-				</Pill>
-			</div>
 		</div>
+
 		<div
-			class="flex flex-wrap items-center gap-2 max-lg:order-3 max-lg:grid max-lg:grid-cols-[1fr_1fr_auto] max-xs:grid-cols-[1fr_auto] lg:shrink-0 lg:flex-nowrap"
+			class="flex flex-wrap items-center gap-2 max-lg:order-3 max-lg:grid max-lg:grid-cols-[1fr_1fr_auto] max-xs:grid-cols-[1fr_auto] lg:col-start-2 lg:row-start-1 lg:flex-nowrap"
 		>
 			<Button variant="outline" onclick={onEdit} aria-label="Edit {product.name}">
 				<Pencil data-icon="inline-start" />
