@@ -1,11 +1,11 @@
 # PayRouters overview
 
-PayRouters is one API in front of Midtrans, Xendit and IDRX for **cash-in** payments in IDR. A product (your app) creates a payment, sends the customer to a hosted page, and learns the result from a signed webhook.
+PayRouters is one API in front of Midtrans, Xendit, IDRX, Mayar and PayPal for **cash-in** payments in IDR. A product (your app) creates a payment, sends the customer to a hosted page, and learns the result from a signed webhook.
 
 - Base URL of this deployment: `{{base_url}}`
 - MCP endpoint (what you are connected to): `{{mcp_url}}`
 - Amounts are integer rupiah (`150000`), `currency` is always `IDR`, timestamps are UTC (RFC 3339), JSON is `snake_case`.
-- Two modes: `sandbox` (test keys `prk_test_...`, Midtrans sandbox, Xendit test keys and a built-in `mock` simulator) and `live` (`prk_live_...`). A key is bound to one mode and sandbox data never mixes into live data.
+- Two modes: `sandbox` (test keys `prk_test_...`, Midtrans sandbox, Xendit test keys, Mayar and PayPal sandboxes and a built-in `mock` simulator) and `live` (`prk_live_...`). A key is bound to one mode and sandbox data never mixes into live data.
 
 ## The shortest integration
 

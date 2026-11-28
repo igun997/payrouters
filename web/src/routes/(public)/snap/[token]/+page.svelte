@@ -184,6 +184,7 @@
 				instructions={payment.instructions}
 				allowSimulate={snap.allow_simulate}
 				{simulating}
+				autoRedirect={!page.url.searchParams.has('paused')}
 				onsimulate={simulate}
 			/>
 		{:else if payment.status === 'pending'}

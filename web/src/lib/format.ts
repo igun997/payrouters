@@ -112,6 +112,8 @@ export const PROVIDER_LABEL: Record<string, string> = {
 	midtrans: 'Midtrans',
 	xendit: 'Xendit',
 	idrx: 'IDRX',
+	mayar: 'Mayar',
+	paypal: 'PayPal',
 	mock: 'Mock'
 };
 

@@ -240,6 +240,7 @@ pub async fn create(
     let id = new_id();
     let token = random_token::<24>();
     let snap_url = state.snap_url(&token);
+    let snap_api_url = state.snap_api_url(&token);
     let expires_at = Utc::now() + Duration::seconds(v.expires_in);
     let provider_options = req.provider_options.clone().unwrap_or_else(|| json!({}));
     let input = ChargeInput {
@@ -252,6 +253,7 @@ pub async fn create(
         items: &req.items,
         return_url: req.return_url.as_deref(),
         snap_url: &snap_url,
+        snap_api_url: &snap_api_url,
         provider_options: &provider_options,
         method: req.method,
     };
@@ -303,6 +305,12 @@ pub async fn create(
         match (v.checkout, req.method) {
             (Checkout::Provider, _) => Some(adapter.create_hosted(&ctx, &input).await),
             (Checkout::Snap, Some(_)) => Some(adapter.create_charge(&ctx, &input).await),
+            // A provider with no standard methods (Mayar, PayPal) has nothing for the customer to
+            // pick on the Snap page, so its hosted checkout is created straight away and the Snap
+            // page shows the hop to it.
+            (Checkout::Snap, None) if info.methods.is_empty() => {
+                Some(adapter.create_hosted(&ctx, &input).await)
+            }
             (Checkout::Snap, None) => None,
         };
     let Some(charge) = charge else {
@@ -426,6 +434,7 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
 
     let account = accounts::load(state, row.provider_account_id).await?;
     let snap_url = state.snap_url(&row.snap_token);
+    let snap_api_url = state.snap_api_url(&row.snap_token);
     let customer = row.customer.as_ref().map(|c| &c.0);
     let input = ChargeInput {
         payment_id: row.id,
@@ -437,6 +446,7 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
         items: &row.items.0,
         return_url: row.return_url.as_deref(),
         snap_url: &snap_url,
+        snap_api_url: &snap_api_url,
         provider_options: &row.provider_options.0,
         method: Some(method),
     };

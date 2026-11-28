@@ -33,12 +33,12 @@
 		{
 			name: 'amount',
 			type: 'integer',
-			note: 'Required. Rupiah, at least 1. For IDRX this is the IDRX to mint, at least 20000.'
+			note: 'Required. Rupiah, at least 1. For IDRX this is the IDRX to mint, at least 20000. PayPal charges the equivalent in its charge currency (USD by default) at the ECB reference rate, or at the fixed rate set on the provider account.'
 		},
 		{
 			name: 'provider',
 			type: 'string',
-			note: 'midtrans, xendit, idrx or mock. Defaults to the product default, then the first enabled provider of the key mode.'
+			note: 'midtrans, xendit, idrx, mayar, paypal or mock. Defaults to the product default, then the first enabled provider of the key mode.'
 		},
 		{
 			name: 'checkout',
@@ -221,9 +221,9 @@ console.log(payment.snap_url, payment.payable_amount ?? payment.amount);`;
 		<section id="overview" class="flex scroll-mt-4 flex-col gap-3 rounded-lg border bg-card p-card">
 			<h2 class="text-card-title">Overview</h2>
 			<p class="text-body text-muted-foreground">
-				One API in front of Midtrans, Xendit and IDRX. Your backend creates a payment, sends the
-				customer to the Snap page (or the provider page), and learns the result from a signed
-				webhook. Amounts are integer rupiah and every timestamp is UTC.
+				One API in front of Midtrans, Xendit, IDRX, Mayar and PayPal. Your backend creates a
+				payment, sends the customer to the Snap page (or the provider page), and learns the result
+				from a signed webhook. Amounts are integer rupiah and every timestamp is UTC.
 			</p>
 			<p class="text-body text-muted-foreground">Base URL of this deployment:</p>
 			<CodeBlock code={base} caption="Base URL" testid="docs-base-url" />
@@ -307,7 +307,9 @@ console.log(payment.snap_url, payment.payable_amount ?? payment.amount);`;
 				<li>
 					<strong class="text-foreground">provider</strong> uses the provider's own page (Midtrans
 					Snap, Xendit session, IDRX checkout). The URL comes back as
-					<code class="text-mono-id font-mono">instructions.type = "redirect"</code>.
+					<code class="text-mono-id font-mono">instructions.type = "redirect"</code>. Mayar and
+					PayPal have no standard methods, so they always use their own page, even with checkout
+					snap.
 				</li>
 			</ul>
 			<p class="text-body text-muted-foreground">
@@ -450,8 +452,10 @@ console.log(payment.snap_url, payment.payable_amount ?? payment.amount);`;
 			<h2 class="text-card-title">Sandbox</h2>
 			<ul class="flex list-disc flex-col gap-2 pl-5 text-body text-muted-foreground">
 				<li>
-					Sandbox keys only reach sandbox provider accounts: Midtrans sandbox, Xendit test keys and
-					the built-in <code class="text-mono-id font-mono">mock</code> provider.
+					Sandbox keys only reach sandbox provider accounts: Midtrans sandbox, Xendit test keys,
+					Mayar sandbox, PayPal sandbox and the built-in <code class="text-mono-id font-mono">
+						mock
+					</code> provider.
 				</li>
 				<li>
 					With <code class="text-mono-id font-mono">mock</code> the Snap page shows a simulator that

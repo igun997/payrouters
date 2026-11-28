@@ -143,7 +143,7 @@ const DEFS: &[Def] = &[
     Def {
         name: "list_provider_accounts",
         title: "List provider accounts",
-        description: "Midtrans, Xendit, IDRX and mock accounts per mode with enabled state, fee schedule and the inbound webhook URL to paste into the provider dashboard. Secrets are masked. Credentials can only be added in the dashboard.",
+        description: "Midtrans, Xendit, IDRX, Mayar, PayPal and mock accounts per mode with enabled state, fee schedule and the inbound webhook URL to paste into the provider dashboard. Secrets are masked. Credentials can only be added in the dashboard.",
         schema: || object(json!({}), &[]),
         need: Need::Read,
         idempotent: true,
@@ -166,7 +166,7 @@ const DEFS: &[Def] = &[
                     "mode": mode_prop(),
                     "status": { "type": "string", "enum": ["pending", "paid", "expired", "failed", "cancelled"] },
                     "product_id": id_prop("Only this product."),
-                    "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mock"] },
+                    "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mayar", "paypal", "mock"] },
                     "q": { "type": "string", "description": "Matches order_id, payment id and provider reference." },
                     "limit": limit_prop(),
                     "cursor": { "type": "string", "description": "next_cursor from the previous page." }
@@ -214,7 +214,7 @@ const DEFS: &[Def] = &[
     Def {
         name: "list_inbound_webhook_events",
         title: "List inbound provider webhook events",
-        description: "What Midtrans, Xendit and IDRX sent to PayRouters, with outcome (applied, noop, unmatched, rejected, error), whether the signature verified and the error. Set include_body to see headers and body.",
+        description: "What Midtrans, Xendit, IDRX, Mayar and PayPal sent to PayRouters, with outcome (applied, noop, unmatched, rejected, error), whether the signature verified and the error. Set include_body to see headers and body.",
         schema: || {
             object(
                 json!({
@@ -240,7 +240,7 @@ const DEFS: &[Def] = &[
                     "from": { "type": "string", "description": "YYYY-MM-DD, inclusive." },
                     "to": { "type": "string", "description": "YYYY-MM-DD, inclusive." },
                     "product_id": id_prop("Only this product."),
-                    "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mock"] }
+                    "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mayar", "paypal", "mock"] }
                 }),
                 &[],
             )
@@ -286,7 +286,7 @@ const DEFS: &[Def] = &[
                 json!({
                     "name": { "type": "string", "description": "1-80 characters, e.g. the app's name." },
                     "webhook_url": { "type": "string", "description": "http(s) URL that receives payment.* events." },
-                    "default_provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mock"], "description": "Used when a payment names no provider." }
+                    "default_provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mayar", "paypal", "mock"], "description": "Used when a payment names no provider." }
                 }),
                 &["name"],
             )
@@ -304,7 +304,7 @@ const DEFS: &[Def] = &[
                     "product_id": id_prop("The product."),
                     "name": { "type": "string" },
                     "webhook_url": { "type": ["string", "null"] },
-                    "default_provider": { "type": ["string", "null"], "enum": ["midtrans", "xendit", "idrx", "mock", null] }
+                    "default_provider": { "type": ["string", "null"], "enum": ["midtrans", "xendit", "idrx", "mayar", "paypal", "mock", null] }
                 }),
                 &["product_id"],
             )
@@ -366,7 +366,7 @@ const DEFS: &[Def] = &[
                     "amount": { "type": "integer", "minimum": 1, "description": "Rupiah. IDRX needs at least 20000." },
                     "mode": mode_prop(),
                     "order_id": { "type": "string", "description": "Up to 64 characters, unique per product and mode. Generated when omitted." },
-                    "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mock"] },
+                    "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mayar", "paypal", "mock"] },
                     "checkout": { "type": "string", "enum": ["snap", "provider"] },
                     "method": { "type": "string", "enum": Method::ALL.iter().map(|m| m.as_str()).collect::<Vec<_>>() },
                     "description": { "type": "string" },

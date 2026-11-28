@@ -7,7 +7,7 @@ Single binary (Rust/axum + Postgres). Three audiences, three auth schemes:
 | Product API | `/v1/*` | `Authorization: Bearer prk_test_…` or `prk_live_…` | your products (via SDK) |
 | Admin API | `/admin/*` | `Authorization: Bearer <ADMIN_TOKEN>` | the dashboard (SPA) |
 | Snap (public) | `/snap/api/:token` | none, token is the capability | customer browser |
-| Provider webhooks (inbound) | `POST /hooks/:provider_account_id` | provider-specific verification | Midtrans / Xendit / IDRX |
+| Provider webhooks (inbound) | `POST /hooks/:provider_account_id` | provider-specific verification | Midtrans / Xendit / IDRX / Mayar / PayPal |
 | MCP server | `POST /mcp` | OAuth access token (`prm_at_…`) obtained through the dashboard session | AI assistants (Claude Code, Cursor, …); see `docs/mcp.md` |
 
 The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`, SPA fallback → `index.html`). Same origin, no CORS. Any path not matching `/v1`, `/admin`, `/snap/api`, `/hooks`, `/mcp`, `/oauth/register`, `/oauth/token`, `/.well-known/*`, `/assets/logo/*`, `/healthz` is the SPA (including `/snap/<token>`, the customer-facing page, and `/oauth/authorize`, the MCP consent page).
@@ -28,9 +28,9 @@ The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`,
 ## Enums
 
 - `status`: `pending | paid | expired | failed | cancelled` (terminal: all but `pending`; `paid` is final).
-- `provider`: `midtrans | xendit | idrx | mock`.
+- `provider`: `midtrans | xendit | idrx | mayar | paypal | mock`.
 - `method` (standard codes): `va_bca | va_bni | va_bri | va_mandiri | va_permata | qris`. `null` while the customer has not chosen (snap) or when the provider-hosted page decides.
-- `checkout`: `snap` (PayRouters hosted page, provider **core API**) | `provider` (provider-hosted page: Midtrans Snap, Xendit Payment Session, IDRX checkout).
+- `checkout`: `snap` (PayRouters hosted page, provider **core API**) | `provider` (provider-hosted page: Midtrans Snap, Xendit Payment Session, IDRX checkout, Mayar payment request, PayPal checkout). Mayar and PayPal have no standard methods: with `snap` and no `method` their hosted page is created straight away (`instructions.type = "redirect"`), and a `method` is refused with `422 method_unsupported`.
 - `outcome` (simulate): `paid | expired | failed`.
 
 ## Objects
@@ -111,8 +111,9 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 - `expires_in` seconds, default 86400 (24 h), min 300.
 - `items` prices must sum to `amount` if given (else 400).
 - `provider_options` is provider-specific. IDRX: `destination_wallet_address`, `chain_id` (fall back to the provider account defaults); IDRX `amount` is the IDRX to be minted (min 20000).
+- PayPal cannot charge rupiah: `amount` stays integer IDR and the customer is charged `amount ÷ rate` in the account's charge currency (USD by default), rounded up to the next minor unit. The rate is the ECB's daily euro reference rate (cross of IDR and the currency; refused when older than 7 days) unless the provider account sets a fixed `idr_rate`. The charged currency and value, the rate and its source are in the payment's stored provider data. `currency` on the payment stays `IDR`, and `fee_amount` is the PayPal fee converted back at the same rate.
 - Response `201` = Payment. **Idempotent replay**: same `order_id` + same `amount` + same resolved provider on a still-`pending` payment → `200` with the existing payment and header `PayRouters-Idempotent-Replay: true`. Any other duplicate → `409 order_id_conflict`.
-- Sandbox keys only reach `mode=sandbox` provider accounts (Midtrans sandbox, Xendit test keys, `mock`). IDRX has no sandbox → `422 sandbox_unsupported`.
+- Sandbox keys only reach `mode=sandbox` provider accounts (Midtrans sandbox, Xendit test keys, Mayar sandbox, PayPal sandbox, `mock`). IDRX has no sandbox → `422 sandbox_unsupported`.
 
 ### `GET /v1/payments/:id` → Payment
 ### `GET /v1/payments?order_id=&status=&limit=&cursor=` → `{data:[Payment], next_cursor}`
@@ -151,6 +152,8 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 
 `POST /hooks/:provider_account_id` — the single URL to paste into each provider dashboard (one per provider account). Always stores the raw request in the inbox. Responses: `200 {"ok":true}` when authentic (even if unmatched/duplicate/no-op), `401` when verification fails, `404` unknown account.
 Verification: Midtrans `signature_key` = SHA512(`order_id`+`status_code`+`gross_amount`+Signature Secret Key); the account's optional `signature_secret_key` credential is tried first and the server key second (before 28 Oct 2026 the server key was the signing key and merchants who never rotated still have identical values); Xendit `x-callback-token` header = account `callback_token`; a Midtrans body with none of `order_id`, `transaction_status`, `gross_amount` (the recurring and account-linking notifications, and their dashboard test buttons; the account-linking one carries a `signature_key` Midtrans does not document how to verify) is acknowledged with 200 and ignored; IDRX has no signature, so the status is re-fetched from IDRX Transaction History by `merchantOrderId` before anything is applied.
+
+Mayar has no signature either: a `payment.received` webhook only names the payment request (`data.productId`), and the status and amount come from `GET /hl/v2/payments/{id}` with the account's API key; other events and other products are acknowledged and ignored. PayPal: the five `paypal-*` transmission headers and the raw body are posted to `/v1/notifications/verify-webhook-signature` with the account's `webhook_id` (`401` when it fails or `webhook_id` is unset); the event only names the order, which is read again (and captured when the payer has approved it) before anything changes. PayPal also returns the payer to `GET /snap/api/:token/return` (or `/cancel`), which settles the payment and redirects to the Snap page.
 
 ---
 

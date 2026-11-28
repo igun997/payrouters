@@ -11,7 +11,11 @@ export function shortMethodLabel(label: string): string {
 export const PASTE_HINT: Record<string, string> = {
 	midtrans: 'Paste into Midtrans → Settings → Configuration → Payment Notification URL.',
 	xendit: 'Paste into Xendit → Settings → Webhooks, for payment and payment session events.',
-	idrx: 'Paste into IDRX → API Key → Callback URL. Callbacks are unsigned, so each one is re-checked with IDRX.'
+	idrx: 'Paste into IDRX → API Key → Callback URL. Callbacks are unsigned, so each one is re-checked with IDRX.',
+	mayar:
+		'Paste into Mayar → Integration → Webhook. Mayar allows one URL per account and does not sign it, so each event is re-checked with Mayar.',
+	paypal:
+		'Add as a webhook URL on your PayPal app (Developer → Apps & Credentials) for Checkout order approved and Payment capture events, then copy the Webhook ID into this account.'
 };
 
 /** Base, Polygon and BNB are the chains IDRX settles on. The default is Base. */
@@ -28,7 +32,12 @@ export const CREDENTIAL_HELPERS: Record<string, string> = {
 	default_wallet_address:
 		'Used when a payment does not set provider_options.destination_wallet_address.',
 	default_chain_id:
-		'Used when a payment omits provider_options.chain_id. Options: Polygon (137), BNB (56).'
+		'Used when a payment omits provider_options.chain_id. Options: Polygon (137), BNB (56).',
+	idr_rate:
+		'Leave blank to charge at the European Central Bank’s daily reference rate (official, mid-market, no PayPal spread). Set a number to fix the rate yourself, for example to build in a margin. Customers are charged amount ÷ rate, rounded up.',
+	currency: 'Three-letter code PayPal supports for any account. Defaults to USD.',
+	webhook_id:
+		'Created when you add this account’s webhook URL on PayPal. Without it PayPal webhooks are refused; payments still settle when the payer returns and by polling.'
 };
 
 /** Two-letter tile code for a provider. */
@@ -36,6 +45,8 @@ export const PROVIDER_CODE: Record<string, string> = {
 	midtrans: 'MT',
 	xendit: 'XD',
 	idrx: 'ID',
+	mayar: 'MY',
+	paypal: 'PP',
 	mock: 'MK'
 };
 

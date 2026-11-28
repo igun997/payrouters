@@ -11,9 +11,12 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+pub mod fx;
 pub mod idrx;
+pub mod mayar;
 pub mod midtrans;
 pub mod mock;
+pub mod paypal;
 pub mod xendit;
 
 #[derive(Debug, Clone, Default)]
@@ -69,6 +72,9 @@ pub struct ChargeInput<'a> {
     pub items: &'a [Item],
     pub return_url: Option<&'a str>,
     pub snap_url: &'a str,
+    /// The payment's `/snap/api/{token}` base. Providers whose payer comes back after approving
+    /// (PayPal) send them to `{snap_api_url}/return` or `{snap_api_url}/cancel`.
+    pub snap_api_url: &'a str,
     pub provider_options: &'a Value,
     pub method: Option<Method>,
 }
@@ -201,15 +207,19 @@ pub fn adapter(provider: Provider) -> &'static dyn ProviderAdapter {
         Provider::Midtrans => &midtrans::Midtrans,
         Provider::Xendit => &xendit::Xendit,
         Provider::Idrx => &idrx::Idrx,
+        Provider::Mayar => &mayar::Mayar,
+        Provider::Paypal => &paypal::Paypal,
         Provider::Mock => &mock::Mock,
     }
 }
 
 /// Default preference when neither the request nor the product names a provider.
-pub const PROVIDER_ORDER: [Provider; 4] = [
+pub const PROVIDER_ORDER: [Provider; 6] = [
     Provider::Midtrans,
     Provider::Xendit,
     Provider::Idrx,
+    Provider::Mayar,
+    Provider::Paypal,
     Provider::Mock,
 ];
 

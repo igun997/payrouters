@@ -21,8 +21,8 @@
 | Field | Notes |
 |---|---|
 | `order_id` | Required. At most 64 characters, unique per product and mode. |
-| `amount` | Required. Integer rupiah, at least 1. For IDRX it is the IDRX to mint, at least 20000. |
-| `provider` | `midtrans`, `xendit`, `idrx` or `mock`. Omitted: the product's default provider, else the first enabled provider of the key's mode. |
+| `amount` | Required. Integer rupiah, at least 1. For IDRX it is the IDRX to mint, at least 20000. PayPal charges the equivalent in its charge currency (USD by default) at the ECB reference rate (or the account's fixed `idr_rate`). |
+| `provider` | `midtrans`, `xendit`, `idrx`, `mayar`, `paypal` or `mock`. Omitted: the product's default provider, else the first enabled provider of the key's mode. |
 | `checkout` | `snap` (default, PayRouters hosted page on the provider's core API) or `provider` (the provider's own hosted page). |
 | `method` | `va_bca`, `va_bni`, `va_bri`, `va_mandiri`, `va_permata`, `qris`. With `snap` and a method the charge is created now and `instructions` is returned; without one the customer picks on the Snap page. |
 | `description`, `customer`, `items`, `metadata` | Optional. `items` prices must add up to `amount`. `metadata` is returned unchanged in payments and webhooks. |

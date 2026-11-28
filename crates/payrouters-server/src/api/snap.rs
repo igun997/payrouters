@@ -4,6 +4,7 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
+use axum::response::Redirect;
 use axum::routing::{get, post};
 use chrono::{DateTime, Utc};
 use payrouters_types::{Instructions, Item, Method, MethodInfo, Outcome, PaymentStatus, Provider};
@@ -21,6 +22,8 @@ pub fn routes() -> Router<AppState> {
         .route("/{token}", get(show))
         .route("/{token}/pay", post(pay))
         .route("/{token}/simulate", post(simulate))
+        .route("/{token}/return", get(returned))
+        .route("/{token}/cancel", get(cancelled))
         .fallback(crate::error::json_not_found)
 }
 
@@ -130,4 +133,28 @@ async fn simulate(
     }
     let row = payments::simulate(&state, row.id, body.outcome).await?;
     Ok(Json(view(&row)?))
+}
+
+/// Where a provider sends the payer back after approving a hosted checkout (PayPal). Approval does
+/// not collect anything until the order is captured, so the payment is settled with the provider
+/// first and the Snap page opens on the result instead of a payment that still looks pending.
+async fn returned(State(state): State<AppState>, Path(token): Path<String>) -> Result<Redirect> {
+    let row = payments::get_by_token(&state, &token).await?;
+    if row.status()? == PaymentStatus::Pending && row.instructions.is_some() {
+        // The page polls and the worker retries, so a provider hiccup here must not strand the payer.
+        if let Err(e) = payments::sync(&state, row.id).await {
+            tracing::warn!(payment = %row.id, error = %e, "sync on return failed");
+        }
+    }
+    Ok(Redirect::to(&state.snap_url(&token)))
+}
+
+/// The payer backed out of the provider's page. The Snap page opens with the automatic hop to the
+/// provider paused, so they can pick it up again or go back to the merchant.
+async fn cancelled(State(state): State<AppState>, Path(token): Path<String>) -> Result<Redirect> {
+    payments::get_by_token(&state, &token).await?;
+    Ok(Redirect::to(&format!(
+        "{}?paused=1",
+        state.snap_url(&token)
+    )))
 }

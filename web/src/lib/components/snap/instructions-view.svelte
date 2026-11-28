@@ -23,12 +23,14 @@
 		instructions,
 		allowSimulate,
 		simulating,
+		autoRedirect = true,
 		onsimulate
 	}: {
 		payment: SnapPayment;
 		instructions: Instructions;
 		allowSimulate: boolean;
 		simulating: boolean;
+		autoRedirect?: boolean;
 		onsimulate: (outcome: SimulateOutcome) => void;
 	} = $props();
 
@@ -55,7 +57,7 @@
 				total={{ label: 'Total', value: formatIdr(payment.amount) }}
 			/>
 		{/if}
-		<RedirectPanel url={instructions.url} providerLabel={providerName} />
+		<RedirectPanel url={instructions.url} providerLabel={providerName} auto={autoRedirect} />
 	</div>
 {:else}
 	<div class="flex flex-col gap-section" data-testid="snap-instructions">

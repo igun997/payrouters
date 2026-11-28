@@ -2,7 +2,7 @@
 
 export type Mode = 'sandbox' | 'live';
 export type PaymentStatus = 'pending' | 'paid' | 'expired' | 'failed' | 'cancelled';
-export type Provider = 'midtrans' | 'xendit' | 'idrx' | 'mock';
+export type Provider = 'midtrans' | 'xendit' | 'idrx' | 'mayar' | 'paypal' | 'mock';
 export type Method = 'va_bca' | 'va_bni' | 'va_bri' | 'va_mandiri' | 'va_permata' | 'qris';
 export type Checkout = 'snap' | 'provider';
 export type SimulateOutcome = 'paid' | 'expired' | 'failed';

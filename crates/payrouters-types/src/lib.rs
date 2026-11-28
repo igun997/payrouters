@@ -54,6 +54,8 @@ string_enum!(
         Midtrans => "midtrans",
         Xendit => "xendit",
         Idrx => "idrx",
+        Mayar => "mayar",
+        Paypal => "paypal",
         Mock => "mock",
     }
 );
@@ -110,6 +112,8 @@ impl Provider {
             Provider::Midtrans => "Midtrans",
             Provider::Xendit => "Xendit",
             Provider::Idrx => "IDRX",
+            Provider::Mayar => "Mayar",
+            Provider::Paypal => "PayPal",
             Provider::Mock => "Mock (simulator)",
         }
     }

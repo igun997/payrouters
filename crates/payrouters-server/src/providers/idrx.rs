@@ -836,6 +836,7 @@ mod tests {
             items: &[],
             return_url: None,
             snap_url: "https://pay.example.com/snap/t",
+            snap_api_url: "https://pay.example.com/snap/api/t",
             provider_options: &opts,
             method: None,
         };
@@ -857,6 +858,7 @@ mod tests {
             items: &[],
             return_url: None,
             snap_url: "https://pay.example.com/snap/t",
+            snap_api_url: "https://pay.example.com/snap/api/t",
             provider_options: &opts,
             method: None,
         };

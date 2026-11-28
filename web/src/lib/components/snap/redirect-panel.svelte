@@ -1,7 +1,8 @@
 <script lang="ts">
 	/*
 	 * Provider-hosted checkout: explains the hop, offers a button and moves the customer on after
-	 * two seconds. The page keeps polling, so it updates when the payment is received.
+	 * two seconds, unless `auto` is off (the payer just came back from the provider's page). The page
+	 * keeps polling, so it updates when the payment is received.
 	 */
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import { Button } from '#lib/components/ui/button';
@@ -9,11 +10,16 @@
 
 	const SECONDS = 2;
 
-	let { url, providerLabel }: { url: string; providerLabel: string } = $props();
+	let {
+		url,
+		providerLabel,
+		auto = true
+	}: { url: string; providerLabel: string; auto?: boolean } = $props();
 
 	let left = $state(SECONDS);
 
 	$effect(() => {
+		if (!auto) return;
 		if (left <= 0) {
 			navigateTo(url);
 			return;
@@ -32,25 +38,27 @@
 	<div class="flex flex-col gap-1">
 		<h2 class="text-card-title font-semibold">You will finish this payment on {providerLabel}</h2>
 		<p class="text-body text-muted-foreground">
-			{providerLabel} shows the bank transfer and e-wallet options on its secure page.
+			{providerLabel} shows its payment options on its secure page.
 		</p>
 	</div>
 	<Button size="lg" class="w-full" onclick={() => navigateTo(url)}>
 		<ExternalLink data-icon="inline-start" aria-hidden="true" />
 		Continue to {providerLabel}
 	</Button>
-	<div class="flex flex-col gap-2">
-		<p class="text-helper text-muted-foreground" role="status">
-			Taking you to {providerLabel} in {left}
-			{left === 1 ? 'second' : 'seconds'}
-		</p>
-		<div class="h-1 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
-			<div
-				class="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
-				style="width: {elapsed}%"
-			></div>
+	{#if auto}
+		<div class="flex flex-col gap-2">
+			<p class="text-helper text-muted-foreground" role="status">
+				Taking you to {providerLabel} in {left}
+				{left === 1 ? 'second' : 'seconds'}
+			</p>
+			<div class="h-1 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+				<div
+					class="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
+					style="width: {elapsed}%"
+				></div>
+			</div>
 		</div>
-	</div>
+	{/if}
 	<p class="text-helper text-muted-foreground">
 		This page updates automatically when your payment is received.
 	</p>

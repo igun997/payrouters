@@ -98,7 +98,7 @@
 		{
 			value: 'provider',
 			title: 'Provider-hosted page',
-			sub: 'Midtrans Snap, Xendit or IDRX checkout'
+			sub: 'Midtrans Snap, Xendit, IDRX, Mayar or PayPal checkout'
 		}
 	] as const;
 

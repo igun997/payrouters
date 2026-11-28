@@ -54,6 +54,11 @@ impl AppState {
         format!("{}/mcp", self.config.public_base_url)
     }
 
+    /// Base of the payment's public Snap API (`GET {..}` state, `/return` and `/cancel`).
+    pub fn snap_api_url(&self, token: &str) -> String {
+        format!("{}/snap/api/{}", self.config.public_base_url, token)
+    }
+
     pub fn provider_webhook_url(&self, account_id: uuid::Uuid) -> String {
         format!("{}/hooks/{}", self.config.public_base_url, account_id)
     }

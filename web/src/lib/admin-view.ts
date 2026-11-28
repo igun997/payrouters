@@ -5,6 +5,8 @@ const PROVIDER_MARK: Record<string, string> = {
 	midtrans: 'MT',
 	xendit: 'XD',
 	idrx: 'ID',
+	mayar: 'MY',
+	paypal: 'PP',
 	mock: 'MK'
 };
 

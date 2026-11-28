@@ -1158,3 +1158,239 @@ async fn logo_route_serves_only_known_codes_and_never_the_spa(pool: PgPool) {
     );
     assert!(!known.text.contains("<html"), "{}", known.text);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn mayar_and_paypal_accounts_are_catalogued_and_can_be_a_product_default(pool: PgPool) {
+    let app = App::new(pool).await;
+
+    // The client secret is required. The rupiah rate is not: without one the ECB reference rate
+    // is used.
+    let missing_secret = app
+        .admin(
+            "POST",
+            "/admin/providers",
+            Some(json!({
+                "provider": "paypal", "mode": "sandbox",
+                "credentials": { "client_id": "cid" }
+            })),
+        )
+        .await;
+    assert_eq!(missing_secret.status, StatusCode::BAD_REQUEST);
+    assert!(
+        missing_secret.text.contains("client_secret"),
+        "{}",
+        missing_secret.text
+    );
+    app.provider(
+        "paypal",
+        "live",
+        json!({ "client_id": "cid", "client_secret": "secret" }),
+    )
+    .await;
+
+    app.provider("mayar", "sandbox", json!({ "api_key": "mayar-key-1234" }))
+        .await;
+    let (paypal_id, hook) = app
+        .provider(
+            "paypal",
+            "sandbox",
+            json!({
+                "client_id": "cid", "client_secret": "secret-value-1234",
+                "idr_rate": "16000", "webhook_id": "WH-1"
+            }),
+        )
+        .await;
+    assert_eq!(hook, format!("http://pay.test/hooks/{paypal_id}"));
+
+    // Secrets stay masked in the account view; the rate and ids are plain.
+    let list = app.admin("GET", "/admin/providers", None).await;
+    let paypal = list.json["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["provider"] == "paypal")
+        .unwrap();
+    assert_eq!(paypal["credentials"]["idr_rate"], "16000");
+    assert_ne!(paypal["credentials"]["client_secret"], "secret-value-1234");
+
+    // Both are hosted-only: they appear in the catalogue with no standard methods.
+    let (pid, _, sandbox_key, _) = app.product_with_keys("Shop", None).await;
+    let methods = app.product("GET", "/v1/methods", &sandbox_key, None).await;
+    for provider in ["mayar", "paypal"] {
+        let entry = methods.json["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["provider"] == provider)
+            .unwrap_or_else(|| panic!("{provider} missing from {}", methods.text));
+        assert_eq!(entry["checkout_provider"], true);
+        assert_eq!(entry["methods"], json!([]));
+    }
+
+    // A method on a hosted-only provider is refused before any provider call.
+    let refused = app
+        .product(
+            "POST",
+            "/v1/payments",
+            &sandbox_key,
+            Some(json!({ "order_id": "M-1", "amount": 50000, "provider": "mayar", "method": "va_bca" })),
+        )
+        .await;
+    assert_eq!(
+        refused.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{}",
+        refused.text
+    );
+    assert_eq!(refused.json["error"]["code"], "method_unsupported");
+
+    // The provider check constraint accepts them as a product default.
+    let patched = app
+        .admin(
+            "PATCH",
+            &format!("/admin/products/{pid}"),
+            Some(json!({ "default_provider": "paypal" })),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK, "{}", patched.text);
+    assert_eq!(patched.json["default_provider"], "paypal");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn mayar_and_paypal_webhooks_refuse_what_they_cannot_verify(pool: PgPool) {
+    let app = App::new(pool).await;
+    let (mayar, _) = app
+        .provider("mayar", "sandbox", json!({ "api_key": "mayar-key" }))
+        .await;
+    let (paypal, _) = app
+        .provider(
+            "paypal",
+            "sandbox",
+            json!({ "client_id": "cid", "client_secret": "s", "idr_rate": "16000" }),
+        )
+        .await;
+    let (paypal_with_id, _) = app
+        .provider(
+            "paypal",
+            "live",
+            json!({ "client_id": "cid", "client_secret": "s", "idr_rate": "16000", "webhook_id": "WH-1" }),
+        )
+        .await;
+
+    // PayPal without a webhook id cannot verify anything.
+    let event = json!({ "event_type": "CHECKOUT.ORDER.APPROVED", "resource": { "id": "ORD1" } });
+    let no_id = app
+        .call(
+            "POST",
+            &format!("/hooks/{paypal}"),
+            None,
+            &[],
+            Some(event.to_string()),
+        )
+        .await;
+    assert_eq!(no_id.status, StatusCode::UNAUTHORIZED, "{}", no_id.text);
+
+    // With one, an event that carries no PayPal transmission headers is still refused.
+    let unsigned = app
+        .call(
+            "POST",
+            &format!("/hooks/{paypal_with_id}"),
+            None,
+            &[],
+            Some(event.to_string()),
+        )
+        .await;
+    assert_eq!(
+        unsigned.status,
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        unsigned.text
+    );
+    assert!(unsigned.text.contains("paypal-"), "{}", unsigned.text);
+
+    let garbage = app
+        .call(
+            "POST",
+            &format!("/hooks/{paypal}"),
+            None,
+            &[],
+            Some("nope".into()),
+        )
+        .await;
+    assert_eq!(garbage.status, StatusCode::BAD_REQUEST);
+
+    // Mayar events that are not a payment on a payment link are acknowledged and ignored
+    // without asking Mayar anything.
+    for body in [
+        json!({ "event": "payment.reminder", "data": { "productId": "7c9d2e1f-3a4b-4c5d-8e6f-1a2b3c4d5e6f" } }),
+        json!({ "event": "membership.memberExpired", "data": {} }),
+        json!({ "event": "payment.received", "data": { "productId": "../balances" } }),
+    ] {
+        let r = app
+            .call(
+                "POST",
+                &format!("/hooks/{mayar}"),
+                None,
+                &[],
+                Some(body.to_string()),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{} for {body}", r.text);
+    }
+    let garbage = app
+        .call(
+            "POST",
+            &format!("/hooks/{mayar}"),
+            None,
+            &[],
+            Some("nope".into()),
+        )
+        .await;
+    assert_eq!(garbage.status, StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn snap_return_and_cancel_land_on_the_snap_page(pool: PgPool) {
+    let app = App::new(pool).await;
+    let (_pid, _, key, _) = app.product_with_keys("Shop", None).await;
+    let created = app
+        .product(
+            "POST",
+            "/v1/payments",
+            &key,
+            Some(json!({ "order_id": "R-1", "amount": 50000, "provider": "mock", "method": "va_bca" })),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text);
+    let snap_url = created.json["snap_url"].as_str().unwrap().to_string();
+    let token = token_of(&snap_url);
+
+    let back = app
+        .call("GET", &format!("/snap/api/{token}/return"), None, &[], None)
+        .await;
+    assert_eq!(back.status, StatusCode::SEE_OTHER);
+    assert_eq!(back.headers.get("location").unwrap(), snap_url.as_str());
+
+    // Backing out keeps the payer on the page but stops the automatic hop to the provider.
+    let cancelled = app
+        .call("GET", &format!("/snap/api/{token}/cancel"), None, &[], None)
+        .await;
+    assert_eq!(cancelled.status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        cancelled.headers.get("location").unwrap(),
+        format!("{snap_url}?paused=1").as_str()
+    );
+
+    for tail in ["return", "cancel"] {
+        let unknown = app
+            .call(
+                "GET",
+                &format!("/snap/api/not-a-token/{tail}"),
+                None,
+                &[],
+                None,
+            )
+            .await;
+        assert_eq!(unknown.status, StatusCode::NOT_FOUND, "{tail}");
+    }
+}

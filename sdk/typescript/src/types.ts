@@ -4,7 +4,7 @@
 export const MODES = ['sandbox', 'live'] as const;
 export type Mode = (typeof MODES)[number];
 
-export const PROVIDERS = ['midtrans', 'xendit', 'idrx', 'mock'] as const;
+export const PROVIDERS = ['midtrans', 'xendit', 'idrx', 'mayar', 'paypal', 'mock'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export const CHECKOUTS = ['snap', 'provider'] as const;
@@ -115,6 +115,7 @@ export interface Payment {
 /**
  * Provider-specific options. IDRX: `destination_wallet_address`, `chain_id`
  * (fall back to the provider account defaults). IDRX `amount` is the IDRX to mint (min 20000).
+ * Mayar and PayPal take none: PayPal converts `amount` to its charge currency at the account rate.
  */
 export interface ProviderOptions {
   destination_wallet_address?: string;

@@ -70,7 +70,7 @@ pub const TOPICS: [Topic; 10] = [
     Topic {
         id: "providers",
         title: "Provider accounts",
-        summary: "Midtrans, Xendit and IDRX credentials and where to paste the webhook URL",
+        summary: "Midtrans, Xendit, IDRX, Mayar and PayPal credentials and where to paste the webhook URL",
         body: include_str!("docs/providers.md"),
     },
 ];
@@ -392,7 +392,7 @@ function verify_payrouters_webhook(string $rawBody, ?string $header, string $sec
 
 // --- Prompts ------------------------------------------------------------------------------------
 
-pub const SERVER_INSTRUCTIONS: &str = "PayRouters routes IDR cash-in payments to Midtrans, Xendit and IDRX behind one API. Use these tools instead of guessing values. Start with get_integration_status: it lists the provider accounts, products, keys and the next steps. get_docs (or the payrouters://docs/* resources) explains the API; generate_code returns ready code with this deployment's base URL; run_integration_selftest, wait_for_payment, create_test_payment and simulate_payment prove an integration end to end in sandbox (docs topic testing). Secrets (API keys, webhook secrets) are returned once by the tool that creates them: tell the user to store them in their backend's environment, never in source code. Live mode needs the live permission; without it everything works on sandbox data only.";
+pub const SERVER_INSTRUCTIONS: &str = "PayRouters routes IDR cash-in payments to Midtrans, Xendit, IDRX, Mayar and PayPal behind one API. Use these tools instead of guessing values. Start with get_integration_status: it lists the provider accounts, products, keys and the next steps. get_docs (or the payrouters://docs/* resources) explains the API; generate_code returns ready code with this deployment's base URL; run_integration_selftest, wait_for_payment, create_test_payment and simulate_payment prove an integration end to end in sandbox (docs topic testing). Secrets (API keys, webhook secrets) are returned once by the tool that creates them: tell the user to store them in their backend's environment, never in source code. Live mode needs the live permission; without it everything works on sandbox data only.";
 
 pub const PROMPTS: [(&str, &str); 4] = [
     (

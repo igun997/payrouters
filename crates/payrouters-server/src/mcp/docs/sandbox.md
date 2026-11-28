@@ -1,6 +1,6 @@
 # Sandbox
 
-- A sandbox key (`prk_test_...`) only reaches sandbox provider accounts: Midtrans sandbox, Xendit test keys and the built-in `mock` provider.
+- A sandbox key (`prk_test_...`) only reaches sandbox provider accounts: Midtrans sandbox, Xendit test keys, Mayar sandbox, PayPal sandbox and the built-in `mock` provider.
 - `mock` needs no credentials. The Snap page shows a simulator that marks the payment paid, expired or failed through the same pipeline as a real provider. Through MCP use `simulate_payment`.
 - IDRX has no sandbox: a sandbox key asking for it gets `422 sandbox_unsupported`.
 - Sandbox and live data never mix in the dashboard stats.

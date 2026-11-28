@@ -467,6 +467,7 @@ mod tests {
             items: &[],
             return_url: Some("https://app.example.com/thanks"),
             snap_url: "https://pay.example.com/snap/t",
+            snap_api_url: "https://pay.example.com/snap/api/t",
             provider_options: opts,
             method: None,
         }
