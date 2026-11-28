@@ -201,7 +201,7 @@ Mayar documents no signature: a `payment.received` webhook only names the paymen
 ## Admin API (`/admin`, bearer `ADMIN_TOKEN`)
 
 ### Meta
-- `GET /admin/me` → `{ "ok": true, "version": "0.5.2", "public_base_url": "https://…", "timezone": "Asia/Jakarta" }` (use to validate a token on login).
+- `GET /admin/me` → `{ "ok": true, "version": "0.6.0", "public_base_url": "https://…", "timezone": "Asia/Jakarta" }` (use to validate a token on login).
 - `GET /admin/meta` →
 ```json
 {
