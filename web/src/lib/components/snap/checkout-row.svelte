@@ -2,6 +2,7 @@
 	/* One provider's hosted checkout (the provider's own page) in the choose-how-to-pay list. */
 	import { providerMark } from '#lib/admin-view';
 	import PayRow from './pay-row.svelte';
+	import { chargeAmount, chargeRate } from '#lib/charge';
 	import type { Provider, SnapCheckout } from '#lib/api/types';
 
 	let {
@@ -20,6 +21,9 @@
 	const sub = $derived.by(() => {
 		if (state === 'connecting') return `Connecting to ${checkout.label}…`;
 		if (state === 'error') return 'Could not start this payment. Try again.';
+		if (checkout.quote) {
+			return `You pay ${chargeAmount(checkout.quote)} (${chargeRate(checkout.quote)})`;
+		}
 		return `Pay on ${checkout.label}`;
 	});
 </script>

@@ -2,9 +2,9 @@
 //! own page (`payer-action` link), then captured by PayRouters.
 //!
 //! PayPal cannot charge rupiah. PayRouters amounts stay integer IDR, and the adapter converts them
-//! to the account's charge currency (USD by default). The rate is the ECB reference rate (see
-//! `fx`), unless the account sets a fixed `idr_rate`. The customer's total is rounded up to the next
-//! minor unit. The order carries `pr:{payment id}:{IDR amount}:{currency}:{value}` as its
+//! to USD, the only currency it charges in. The rate is the ECB reference rate (see `fx`), unless
+//! the account sets a fixed `idr_rate`. The customer's total is rounded up to the next cent. The
+//! order carries `pr:{payment id}:{IDR amount}:{currency}:{value}` as its
 //! `custom_id`, so whatever PayPal later reports (the order, its capture, a webhook) is checked
 //! against what this payment asked for and is mapped back to IDR with the rate that was in force at
 //! checkout. The fee PayPal reports is converted the same way.
@@ -38,45 +38,14 @@ fn base(mode: Mode) -> &'static str {
     }
 }
 
-/// Currencies PayPal supports for any account, with their decimal places. BRL, CNY and MYR work
-/// only for in-country accounts and are left out.
-const CURRENCIES: [(&str, u32); 21] = [
-    ("AUD", 2),
-    ("CAD", 2),
-    ("CHF", 2),
-    ("CZK", 2),
-    ("DKK", 2),
-    ("EUR", 2),
-    ("GBP", 2),
-    ("HKD", 2),
-    ("HUF", 0),
-    ("ILS", 2),
-    ("JPY", 0),
-    ("MXN", 2),
-    ("NOK", 2),
-    ("NZD", 2),
-    ("PHP", 2),
-    ("PLN", 2),
-    ("SEK", 2),
-    ("SGD", 2),
-    ("THB", 2),
-    ("TWD", 0),
-    ("USD", 2),
-];
+/// The only currency charged: the rupiah is converted to USD (two decimal places).
+const CURRENCY: &str = "USD";
+const EXPONENT: u32 = 2;
 
-fn exponent(currency: &str) -> Option<u32> {
-    CURRENCIES
-        .iter()
-        .find(|(c, _)| *c == currency)
-        .map(|(_, e)| *e)
-}
-
-/// The charge currency and the fixed rate, if any, from the account credentials.
+/// The fixed rate, if any, from the account credentials.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FxConfig {
-    currency: String,
-    exponent: u32,
-    /// `idr_rate`: rupiah per one unit of the currency. Absent means the ECB reference rate.
+    /// `idr_rate`: rupiah per US dollar. Absent means the ECB reference rate.
     fixed: Option<f64>,
 }
 
@@ -97,18 +66,6 @@ pub(crate) struct Fx {
 }
 
 pub(crate) fn fx_config(creds: &Credentials) -> Result<FxConfig, String> {
-    let currency = creds
-        .get("currency")
-        .unwrap_or("USD")
-        .trim()
-        .to_ascii_uppercase();
-    let exponent = exponent(&currency).ok_or_else(|| {
-        let list: Vec<&str> = CURRENCIES.iter().map(|(c, _)| *c).collect();
-        format!(
-            "PayPal currency `{currency}` is not supported (use one of {})",
-            list.join(", ")
-        )
-    })?;
     let fixed = match creds.get("idr_rate") {
         None => None,
         Some(raw) => {
@@ -123,18 +80,14 @@ pub(crate) fn fx_config(creds: &Credentials) -> Result<FxConfig, String> {
             Some(rate)
         }
     };
-    Ok(FxConfig {
-        currency,
-        exponent,
-        fixed,
-    })
+    Ok(FxConfig { fixed })
 }
 
 impl FxConfig {
     fn at(&self, rate: f64, source: RateSource) -> Fx {
         Fx {
-            currency: self.currency.clone(),
-            exponent: self.exponent,
+            currency: CURRENCY.to_string(),
+            exponent: EXPONENT,
             rate,
             source,
         }
@@ -145,7 +98,7 @@ impl FxConfig {
         if let Some(rate) = self.fixed {
             return Ok(self.at(rate, RateSource::Fixed));
         }
-        let r = fx::idr_per_unit(ctx.http, &self.currency).await?;
+        let r = fx::idr_per_unit(ctx.http, CURRENCY).await?;
         Ok(self.at(r.idr_per_unit, RateSource::Ecb(r.as_of)))
     }
 }
@@ -173,6 +126,17 @@ impl RateSource {
     }
 }
 impl Fx {
+    /// What the customer is charged for `amount` rupiah, as shown before and after checkout.
+    fn quote(&self, amount: i64) -> Quote {
+        Quote {
+            currency: self.currency.clone(),
+            value: self.value(self.minor(amount)),
+            idr_per_unit: self.rate,
+            source: self.source.name().to_string(),
+            as_of: self.source.date(),
+        }
+    }
+
     /// Minor units of the charge currency for `amount` rupiah, rounded up so the merchant never
     /// receives less than it asked for.
     fn minor(&self, amount: i64) -> i64 {
@@ -241,7 +205,7 @@ fn parse_custom_id(s: &str) -> Option<Ours> {
         currency: parts.next()?.to_string(),
         value: parts.next()?.to_string(),
     };
-    (parts.next().is_none() && exponent(&ours.currency).is_some()).then_some(ours)
+    (parts.next().is_none() && ours.currency == CURRENCY).then_some(ours)
 }
 
 pub(crate) fn order_body(input: &ChargeInput<'_>, fx: &Fx) -> Value {
@@ -501,7 +465,7 @@ fn paid_state(order_id: Option<&str>, ours: &Ours, capture: &Value) -> OrderStat
     u.paid_at = str_field(capture, "update_time")
         .or_else(|| str_field(capture, "create_time"))
         .and_then(parse_time);
-    let exp = exponent(&ours.currency).unwrap_or(2);
+    let exp = EXPONENT;
     let asked = parse_minor(&ours.value, exp);
     let exact = asked.is_some()
         && money(capture, "amount").is_some_and(|(currency, value)| {
@@ -719,17 +683,10 @@ impl ProviderAdapter for Paypal {
                 },
                 CredentialField {
                     key: "idr_rate",
-                    label: "Fixed rupiah per 1 unit (optional)",
+                    label: "Fixed rupiah per 1 USD (optional)",
                     secret: false,
                     required: false,
                     placeholder: "blank = ECB reference rate",
-                },
-                CredentialField {
-                    key: "currency",
-                    label: "Charge currency",
-                    secret: false,
-                    required: false,
-                    placeholder: "USD",
                 },
                 CredentialField {
                     key: "webhook_id",
@@ -855,6 +812,15 @@ impl ProviderAdapter for Paypal {
         }
     }
 
+    async fn quote(
+        &self,
+        ctx: &ProviderCtx<'_>,
+        amount: i64,
+    ) -> Result<Option<Quote>, ProviderError> {
+        let cfg = fx_config(ctx.creds).map_err(ProviderError::Config)?;
+        Ok(Some(cfg.resolve(ctx).await?.quote(amount)))
+    }
+
     async fn test_connection(&self, ctx: &ProviderCtx<'_>) -> Result<String, ProviderError> {
         let cfg = fx_config(ctx.creds).map_err(ProviderError::Config)?;
         access_token(ctx, true).await?;
@@ -920,22 +886,18 @@ mod tests {
     }
 
     #[test]
-    fn config_takes_a_supported_currency_and_an_optional_fixed_rate() {
+    fn config_takes_an_optional_fixed_rate_and_always_charges_usd() {
         // no rate: the ECB reference rate is used
         let cfg = fx_config(&creds(&[])).unwrap();
-        assert_eq!((cfg.currency.as_str(), cfg.fixed), ("USD", None));
+        assert_eq!(cfg.fixed, None);
         assert!(fx_config(&creds(&[("idr_rate", "abc")])).is_err());
         assert!(fx_config(&creds(&[("idr_rate", "0")])).is_err());
         assert!(fx_config(&creds(&[("idr_rate", "-5")])).is_err());
-        assert!(
-            fx_config(&creds(&[("currency", "IDR")]))
-                .unwrap_err()
-                .contains("not supported")
-        );
-        assert!(fx_config(&creds(&[("currency", "MYR")])).is_err());
-        let ok = fx_config(&creds(&[("idr_rate", "16,250.5"), ("currency", "sgd")])).unwrap();
-        assert_eq!(ok.currency, "SGD");
+        let ok = fx_config(&creds(&[("idr_rate", "16,250.5")])).unwrap();
         assert_eq!(ok.fixed, Some(16_250.5));
+        // a `currency` left on an account from before USD was fixed changes nothing
+        let old = fx_config(&creds(&[("idr_rate", "16000"), ("currency", "SGD")])).unwrap();
+        assert_eq!(old.at(16_000.0, RateSource::Fixed).currency, "USD");
         assert_eq!(usd("16000").currency, "USD");
     }
 
@@ -953,10 +915,36 @@ mod tests {
     }
 
     #[test]
-    fn zero_digit_currencies_have_no_decimals() {
-        let jpy = fixed(&[("idr_rate", "110"), ("currency", "JPY")]);
-        assert_eq!(jpy.value(jpy.minor(11_000)), "100");
-        assert_eq!(jpy.value(jpy.minor(11_001)), "101");
+    fn a_quote_is_what_the_order_will_charge() {
+        let fx = usd("18378");
+        let q = fx.quote(129_000);
+        // 129 000 / 18 378 = 7.0192… USD, rounded up to the next cent
+        assert_eq!(q.value, "7.02");
+        assert_eq!(q.currency, "USD");
+        assert_eq!(q.idr_per_unit, 18_378.0);
+        assert_eq!((q.source.as_str(), q.as_of), ("fixed", None));
+        let body = order_body(&input(None, 129_000), &fx);
+        assert_eq!(body["purchase_units"][0]["amount"]["value"], q.value);
+    }
+
+    #[test]
+    fn the_stored_charge_reads_back_as_the_quote_shown_to_the_customer() {
+        let data = json!({
+            "kind": "order",
+            "charge": { "currency": "USD", "value": "7.02" },
+            "idr_rate": 18378.0,
+            "rate_source": "ecb",
+            "rate_date": "2026-11-27",
+        });
+        let q = Quote::from_provider_data(&data).unwrap();
+        assert_eq!((q.currency.as_str(), q.value.as_str()), ("USD", "7.02"));
+        assert_eq!(q.idr_per_unit, 18_378.0);
+        assert_eq!(
+            (q.source.as_str(), q.as_of.as_deref()),
+            ("ecb", Some("2026-11-27"))
+        );
+        // a payment on a provider that charges rupiah has nothing to show
+        assert_eq!(Quote::from_provider_data(&json!({ "kind": "va" })), None);
     }
 
     #[test]
@@ -1212,10 +1200,11 @@ mod tests {
                 .validate(&creds(&[("idr_rate", "16000")]), &i, true)
                 .is_ok()
         );
+        // PayPal always charges USD: a `currency` left on an older account is ignored, not refused
         assert!(
             Paypal
                 .validate(&creds(&[("currency", "IDR")]), &i, true)
-                .is_err()
+                .is_ok()
         );
         assert!(
             Paypal

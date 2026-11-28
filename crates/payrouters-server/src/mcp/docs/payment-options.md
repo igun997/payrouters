@@ -43,6 +43,6 @@ Options are chosen per product, not per mode. A mode uses the options whose prov
 ## Things to know
 
 - Instructions differ by option: `virtual_account` or `qris` for methods, `redirect` for hosted checkouts. Send the customer to `snap_url` unless you render instructions yourself.
-- **PayPal** cannot charge rupiah. Amounts stay integer IDR; the customer is charged `amount ÷ rate` in the account's currency (USD by default) at the ECB reference rate, or a fixed `idr_rate` on the account. The rate is stored with the payment.
+- **PayPal** cannot charge rupiah, so it always charges in USD. Amounts stay integer IDR; the customer is charged `amount ÷ rate` US dollars at the ECB reference rate, or a fixed `idr_rate` on the account, and the Snap page shows that USD amount and the rate on the PayPal card and again before the redirect. The rate is stored with the payment.
 - A provider that refuses a method as "not activated" (Midtrans `402`, also when only its Core API is not activated; Xendit `CHANNEL_NOT_ACTIVATED`) is detected: the method is hidden for 30 minutes and its payments go to that provider's hosted checkout instead (see `checkout-and-methods`).
 - Fees: each provider account keeps its own fee schedule; a payment uses the account that took the charge. Stats and webhooks report the provider that served it.

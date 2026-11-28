@@ -57,7 +57,13 @@
 				total={{ label: 'Total', value: formatIdr(payment.amount) }}
 			/>
 		{/if}
-		<RedirectPanel url={instructions.url} providerLabel={providerName} auto={autoRedirect} />
+		<RedirectPanel
+			url={instructions.url}
+			providerLabel={providerName}
+			amount={payment.amount}
+			charge={payment.charge}
+			auto={autoRedirect}
+		/>
 	</div>
 {:else}
 	<div class="flex flex-col gap-section" data-testid="snap-instructions">

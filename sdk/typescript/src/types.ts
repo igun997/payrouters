@@ -115,7 +115,7 @@ export interface Payment {
 /**
  * Provider-specific options. IDRX: `destination_wallet_address`, `chain_id`
  * (fall back to the provider account defaults). IDRX `amount` is the IDRX to mint (min 20000).
- * Mayar and PayPal take none: PayPal converts `amount` to its charge currency at the account rate.
+ * Mayar and PayPal take none: PayPal converts `amount` to US dollars at the account rate.
  */
 export interface ProviderOptions {
   destination_wallet_address?: string;

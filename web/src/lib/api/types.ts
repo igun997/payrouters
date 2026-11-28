@@ -347,6 +347,18 @@ export interface SnapMethod {
 	group: MethodGroup;
 }
 
+/** What the customer is charged when the provider converts the amount (PayPal charges USD). */
+export interface Charge {
+	currency: string;
+	/** Decimal string, e.g. "7.02". */
+	value: string;
+	/** Rupiah per one unit of `currency`. */
+	idr_per_unit: number;
+	source: 'ecb' | 'fixed';
+	/** Date of the reference rate when `source` is `ecb` (YYYY-MM-DD). */
+	as_of: string | null;
+}
+
 export interface SnapPayment {
 	id: string;
 	order_id: string;
@@ -363,11 +375,15 @@ export interface SnapPayment {
 	expires_at: string;
 	paid_at: string | null;
 	return_url: string | null;
+	/** What the customer was charged once a converting checkout (PayPal) exists. */
+	charge: Charge | null;
 }
 
 export interface SnapCheckout {
 	provider: Provider;
 	label: string;
+	/** What the customer would be charged, when the provider converts the amount (PayPal). */
+	quote: Charge | null;
 }
 /** Body of `POST /snap/api/:token/pay`: a standard method, or a provider's hosted checkout. */
 export type PayChoice = { method: Method } | { provider: Provider };

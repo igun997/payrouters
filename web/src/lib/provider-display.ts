@@ -34,8 +34,7 @@ export const CREDENTIAL_HELPERS: Record<string, string> = {
 	default_chain_id:
 		'Used when a payment omits provider_options.chain_id. Options: Polygon (137), BNB (56).',
 	idr_rate:
-		'Leave blank to charge at the European Central Bank’s daily reference rate (official, mid-market, no PayPal spread). Set a number to fix the rate yourself, for example to build in a margin. Customers are charged amount ÷ rate, rounded up.',
-	currency: 'Three-letter code PayPal supports for any account. Defaults to USD.',
+		'Rupiah per US dollar. Leave blank to charge at the European Central Bank’s daily reference rate (official, mid-market, no PayPal spread). Set a number to fix the rate yourself, for example to build in a margin. PayPal always charges in USD: customers are charged amount ÷ rate dollars, rounded up to the next cent.',
 	webhook_token:
 		'Optional. Mayar → Integration → Webhook Token. Mayar does not say which header carries it, so any header is accepted; if Mayar sends it elsewhere, webhooks are refused (payments still settle by polling), so clear it.',
 	webhook_id:

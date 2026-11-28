@@ -34,7 +34,7 @@
 		{
 			name: 'amount',
 			type: 'integer',
-			note: 'Required. Rupiah, at least 1. For IDRX this is the IDRX to mint, at least 20000. PayPal charges the equivalent in its charge currency (USD by default) at the ECB reference rate, or at the fixed rate set on the provider account.'
+			note: 'Required. Rupiah, at least 1. For IDRX this is the IDRX to mint, at least 20000. PayPal charges the equivalent in USD at the ECB reference rate, or at the fixed rate set on the provider account.'
 		},
 		{
 			name: 'provider',

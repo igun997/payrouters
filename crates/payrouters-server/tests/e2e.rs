@@ -1610,10 +1610,23 @@ async fn a_product_can_combine_providers_through_its_payment_options(pool: PgPoo
         .map(|m| m["code"].as_str().unwrap())
         .collect();
     assert_eq!(methods, ["qris", "va_bca", "va_bni"]);
+    // PayPal always charges USD: the account's fixed rate of 16000 makes 129 000 IDR 8.0625 USD,
+    // rounded up to the next cent, and the customer sees that before picking it
     assert_eq!(
         view.json["checkouts"],
-        json!([{ "provider": "paypal", "label": "PayPal" }])
+        json!([{
+            "provider": "paypal",
+            "label": "PayPal",
+            "quote": {
+                "currency": "USD",
+                "value": "8.07",
+                "idr_per_unit": 16000.0,
+                "source": "fixed",
+                "as_of": null
+            }
+        }])
     );
+    assert!(view.json["payment"]["charge"].is_null());
     // what the product does not offer is refused before any provider is asked
     for (body, code) in [
         (json!({ "method": "va_mandiri" }), "method_unsupported"),

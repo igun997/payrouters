@@ -111,7 +111,7 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 - `expires_in` seconds, default 86400 (24 h), min 300.
 - `items` prices must sum to `amount` if given (else 400).
 - `provider_options` is provider-specific. IDRX: `destination_wallet_address`, `chain_id` (fall back to the provider account defaults); IDRX `amount` is the IDRX to be minted (min 20000).
-- PayPal cannot charge rupiah: `amount` stays integer IDR and the customer is charged `amount ÷ rate` in the account's charge currency (USD by default), rounded up to the next minor unit. The rate is the ECB's daily euro reference rate (cross of IDR and the currency; refused when older than 7 days) unless the provider account sets a fixed `idr_rate`. The charged currency and value, the rate and its source are in the payment's stored provider data. `currency` on the payment stays `IDR`, and `fee_amount` is the PayPal fee converted back at the same rate.
+- PayPal cannot charge rupiah, so it always charges in **USD**: `amount` stays integer IDR and the customer is charged `amount ÷ rate` US dollars, rounded up to the next cent. The rate is the ECB's daily euro reference rate (cross of IDR and USD; refused when older than 7 days) unless the provider account sets a fixed `idr_rate` (rupiah per US dollar). The Snap page shows the USD amount and the rate before the customer picks PayPal and again before the redirect. The charged currency and value, the rate and its source are in the payment's stored provider data. `currency` on the payment stays `IDR`, and `fee_amount` is the PayPal fee converted back at the same rate.
 - Response `201` = Payment. **Idempotent replay**: same `order_id` + same `amount` + same resolved provider on a still-`pending` payment → `200` with the existing payment and header `PayRouters-Idempotent-Replay: true`. Any other duplicate → `409 order_id_conflict`.
 - Sandbox keys only reach `mode=sandbox` provider accounts (Midtrans sandbox, Xendit test keys, Mayar sandbox, PayPal sandbox, `mock`). IDRX has no sandbox → `422 sandbox_unsupported`.
 - **Channels the account does not have are detected, not configured.** When a provider answers a standard-method charge as "not activated" (Midtrans `402 Payment channel is not activated`, which also happens when only its Core API is not activated; Xendit `CHANNEL_NOT_ACTIVATED`), PayRouters remembers that method as inactive for the provider account for 30 minutes (in memory; editing the account clears it), stops offering it on the Snap page while another method is left, and serves the payment from the provider's hosted checkout instead: the payment comes back with `instructions.type = "redirect"` and `method: null`, even when `method` was sent. When every standard method is refused, a Snap payment goes to the hosted checkout straight away. A provider with no hosted checkout answers `422 channel_not_activated`.
@@ -135,13 +135,15 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 ```json
 {
   "merchant_name": "My Product",
-  "payment": { "id": "…", "order_id": "…", "status": "pending", "livemode": false, "amount": 150000, "payable_amount": null, "currency": "IDR", "provider": "midtrans", "method": null, "description": null, "items": [], "instructions": null, "expires_at": "…", "paid_at": null, "return_url": null },
+  "payment": { "id": "…", "order_id": "…", "status": "pending", "livemode": false, "amount": 150000, "payable_amount": null, "currency": "IDR", "provider": "midtrans", "method": null, "description": null, "items": [], "instructions": null, "expires_at": "…", "paid_at": null, "return_url": null, "charge": null },
   "methods": [ { "code": "va_bca", "label": "BCA Virtual Account", "group": "virtual_account" }, { "code": "qris", "label": "QRIS", "group": "qris" } ],
-  "checkouts": [ { "provider": "paypal", "label": "PayPal" } ],
+  "checkouts": [ { "provider": "paypal", "label": "PayPal", "quote": { "currency": "USD", "value": "8.16", "idr_per_unit": 18378.2, "source": "ecb", "as_of": "2026-11-27" } } ],
   "allow_simulate": false
 }
 ```
 `methods` = what the customer can pick: the payment's provider in core mode, or, for a payment created from the product's payment options, the product's methods; `checkouts` = the product's hosted checkouts the customer can pick (always empty without payment options). Both are empty once `instructions` exist or status ≠ pending. A method a provider account has been seen to refuse as not activated is left out while anything else remains. `allow_simulate` is true only for the `mock` provider while pending. The page polls this endpoint (every 3 s) until `status` ≠ `pending`, then redirects to `return_url` if present.
+
+`checkouts[].quote` is set when the provider converts the amount (PayPal, always to USD): `{ "currency", "value", "idr_per_unit", "source": "ecb" | "fixed", "as_of" }`, the conversion the charge will use. It is `null` when the rate cannot be read. `payment.charge` has the same shape and holds what the customer was actually charged once a PayPal checkout exists (`null` otherwise).
 
 ### `POST /snap/api/:token/pay` body `{ "method": "va_bca" }` or `{ "provider": "paypal" }` → same shape as GET
 Exactly one of `method` (a standard method) or `provider` (that provider's hosted checkout; the answer has `instructions.type = "redirect"`), else `400`. `409 method_already_selected` if instructions exist or a choice is in flight; `422 method_unsupported` / `422 checkout_unsupported` (the payment, or its product's options, do not offer it); `409 conflict` if not pending/expired. For a payment created from payment options the payment moves to the provider that serves the choice when the charge is created. A method the provider reports as not activated is served from its hosted checkout instead (`method` stays `null`).
@@ -244,7 +246,7 @@ Credential keys per provider (`GET /admin/meta` lists them with labels, required
 | `xendit` | `secret_key`, `callback_token` | |
 | `idrx` | `api_key`, `api_secret` | `default_wallet_address`, `default_chain_id` |
 | `mayar` | `api_key` | `webhook_token` |
-| `paypal` | `client_id`, `client_secret` | `idr_rate` (fixed rupiah per unit; blank = ECB reference rate), `currency` (default `USD`), `webhook_id` |
+| `paypal` | `client_id`, `client_secret` | `idr_rate` (fixed rupiah per US dollar; blank = ECB reference rate), `webhook_id`. The charge is always in USD. |
 | `mock` | none | |
 
 - `GET /admin/providers` → `{data:[ProviderAccount]}`

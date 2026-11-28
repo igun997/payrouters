@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 use crate::error::{ApiJson, AppError, Result};
 use crate::models::PaymentRow;
-use crate::providers;
-use crate::services::{options, payments};
+use crate::providers::{self, Quote};
+use crate::services::{accounts, options, payments};
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -44,6 +44,8 @@ struct SnapPayment {
     expires_at: DateTime<Utc>,
     paid_at: Option<DateTime<Utc>>,
     return_url: Option<String>,
+    /// What the customer is charged in the provider's own currency (PayPal), once known.
+    charge: Option<Quote>,
 }
 
 #[derive(Serialize)]
@@ -61,6 +63,29 @@ struct SnapView {
 struct SnapCheckout {
     provider: Provider,
     label: &'static str,
+    /// What the customer would be charged, when the provider converts the amount (PayPal).
+    quote: Option<Quote>,
+}
+
+/// The conversion a provider would apply to `amount`. A rate that cannot be read is left out here:
+/// the charge itself reports the failure if the customer picks that provider.
+async fn quote(
+    state: &AppState,
+    provider: Provider,
+    account_id: Uuid,
+    amount: i64,
+) -> Option<Quote> {
+    let record = accounts::load(state, account_id).await.ok()?;
+    match providers::adapter(provider)
+        .quote(&record.ctx(state), amount)
+        .await
+    {
+        Ok(quote) => quote,
+        Err(error) => {
+            tracing::warn!(%provider, %error, "could not quote a checkout");
+            None
+        }
+    }
 }
 
 /// What the customer can still pick: the product's payment options for a payment created from
@@ -76,16 +101,22 @@ async fn picker(
         && !usable.is_empty()
     {
         let p = options::picker(&usable);
-        return Ok((
-            p.methods.iter().map(|(m, _)| m.info()).collect(),
-            p.checkouts
+        let mut checkouts = Vec::with_capacity(p.checkouts.len());
+        for provider in &p.checkouts {
+            let account = usable
                 .iter()
-                .map(|p| SnapCheckout {
-                    provider: *p,
-                    label: p.label(),
-                })
-                .collect(),
-        ));
+                .find(|u| u.option.provider == *provider)
+                .map(|u| u.account_id);
+            checkouts.push(SnapCheckout {
+                provider: *provider,
+                label: provider.label(),
+                quote: match account {
+                    Some(id) => quote(state, *provider, id, row.amount).await,
+                    None => None,
+                },
+            });
+        }
+        return Ok((p.methods.iter().map(|(m, _)| m.info()).collect(), checkouts));
     }
     let all = providers::adapter(provider).info().methods;
     let methods = providers::availability::offered(row.provider_account_id, &all);
@@ -123,6 +154,7 @@ async fn view(state: &AppState, row: &PaymentRow) -> Result<SnapView> {
             expires_at: row.expires_at,
             paid_at: row.paid_at,
             return_url: row.return_url.clone(),
+            charge: Quote::from_provider_data(&row.provider_data.0),
         },
         methods,
         checkouts,

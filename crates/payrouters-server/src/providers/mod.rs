@@ -89,6 +89,39 @@ pub struct ChargeOutput {
     pub payable_amount: Option<i64>,
 }
 
+/// What the customer is really charged when the provider cannot take rupiah (PayPal): the amount in
+/// the charge currency and the rate it was converted at.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Quote {
+    pub currency: String,
+    /// Decimal string as the provider is sent it, e.g. `"7.02"`.
+    pub value: String,
+    /// Rupiah per one unit of `currency`.
+    pub idr_per_unit: f64,
+    /// `fixed` (set on the account) or `ecb` (the European Central Bank reference rate).
+    pub source: String,
+    /// Date of the reference rate when `source` is `ecb`.
+    pub as_of: Option<String>,
+}
+
+impl Quote {
+    /// The charge a payment stored with its provider data (`charge`, `idr_rate`, `rate_source`,
+    /// `rate_date`), if the provider converted its amount.
+    pub fn from_provider_data(data: &Value) -> Option<Quote> {
+        let charge = data.get("charge")?;
+        Some(Quote {
+            currency: charge.get("currency")?.as_str()?.to_string(),
+            value: charge.get("value")?.as_str()?.to_string(),
+            idr_per_unit: data.get("idr_rate")?.as_f64()?,
+            source: data.get("rate_source")?.as_str()?.to_string(),
+            as_of: data
+                .get("rate_date")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        })
+    }
+}
+
 /// What a provider told us about a payment (webhook or status poll).
 #[derive(Debug, Clone)]
 pub struct StatusUpdate {
@@ -204,6 +237,16 @@ pub trait ProviderAdapter: Send + Sync {
         headers: &HeaderMap,
         body: &[u8],
     ) -> Result<ParsedWebhook, WebhookError>;
+
+    /// What the customer would be charged for `amount` rupiah when this provider converts it to
+    /// another currency; `None` when it charges rupiah.
+    async fn quote(
+        &self,
+        _ctx: &ProviderCtx<'_>,
+        _amount: i64,
+    ) -> Result<Option<Quote>, ProviderError> {
+        Ok(None)
+    }
 
     /// Cheap authenticated call proving the credentials work.
     async fn test_connection(&self, ctx: &ProviderCtx<'_>) -> Result<String, ProviderError>;
