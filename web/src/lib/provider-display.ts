@@ -13,7 +13,7 @@ export const PASTE_HINT: Record<string, string> = {
 	xendit: 'Paste into Xendit → Settings → Webhooks, for payment and payment session events.',
 	idrx: 'Paste into IDRX → API Key → Callback URL. Callbacks are unsigned, so each one is re-checked with IDRX.',
 	mayar:
-		'Paste into Mayar → Integration → Webhook. Mayar allows one URL per account and does not sign it, so each event is re-checked with Mayar.',
+		'Paste into Mayar → Integration → Webhook. Mayar allows one URL per account. Each event is re-checked with Mayar; paste the Webhook Token below as well to refuse requests that do not carry it.',
 	paypal:
 		'Add as a webhook URL on your PayPal app (Developer → Apps & Credentials) for Checkout order approved and Payment capture events, then copy the Webhook ID into this account.'
 };
@@ -36,6 +36,8 @@ export const CREDENTIAL_HELPERS: Record<string, string> = {
 	idr_rate:
 		'Leave blank to charge at the European Central Bank’s daily reference rate (official, mid-market, no PayPal spread). Set a number to fix the rate yourself, for example to build in a margin. Customers are charged amount ÷ rate, rounded up.',
 	currency: 'Three-letter code PayPal supports for any account. Defaults to USD.',
+	webhook_token:
+		'Optional. Mayar → Integration → Webhook Token. Mayar does not say which header carries it, so any header is accepted; if Mayar sends it elsewhere, webhooks are refused (payments still settle by polling), so clear it.',
 	webhook_id:
 		'Created when you add this account’s webhook URL on PayPal. Without it PayPal webhooks are refused; payments still settle when the payer returns and by polling.'
 };

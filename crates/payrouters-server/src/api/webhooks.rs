@@ -32,14 +32,19 @@ const REDACTED_HEADERS: [&str; 5] = [
     "idrx-api-sig",
 ];
 
-fn headers_json(headers: &HeaderMap) -> Value {
+/// Headers as stored in the inbox. Known credential headers are redacted by name, and so is any
+/// header whose value is one of the account's stored secrets (a provider may carry its webhook
+/// token in a header of its own choosing).
+fn headers_json(headers: &HeaderMap, secrets: &[&str]) -> Value {
     let mut map = serde_json::Map::new();
     for (k, v) in headers {
         let name = k.as_str().to_ascii_lowercase();
-        let value = if REDACTED_HEADERS.contains(&name.as_str()) {
+        let raw = String::from_utf8_lossy(v.as_bytes());
+        let is_secret = secrets.iter().any(|s| !s.is_empty() && raw.contains(s));
+        let value = if REDACTED_HEADERS.contains(&name.as_str()) || is_secret {
             "[redacted]".to_string()
         } else {
-            String::from_utf8_lossy(v.as_bytes()).into_owned()
+            raw.into_owned()
         };
         map.insert(name, Value::String(value));
     }
@@ -53,6 +58,8 @@ struct Record<'a> {
     verified: bool,
     outcome: &'static str,
     error: Option<String>,
+    /// Stored secret credentials of the account, never written to the inbox.
+    secrets: &'a [&'a str],
 }
 
 async fn record(state: &AppState, r: Record<'_>, headers: &HeaderMap, body: &[u8]) {
@@ -68,7 +75,7 @@ async fn record(state: &AppState, r: Record<'_>, headers: &HeaderMap, body: &[u8
     .bind(r.verified)
     .bind(r.outcome)
     .bind(r.error)
-    .bind(headers_json(headers))
+    .bind(headers_json(headers, r.secrets))
     // bodies are small JSON; cap anyway so a hostile caller cannot bloat the table
     .bind(String::from_utf8_lossy(&body[..body.len().min(65_536)]).into_owned())
     .execute(&state.pool)
@@ -120,6 +127,13 @@ async fn receive(
     let adapter = providers::adapter(provider);
     let ctx = account.ctx(&state);
     let pname = provider.as_str();
+    let secrets: Vec<&str> = adapter
+        .info()
+        .credential_fields
+        .iter()
+        .filter(|f| f.secret)
+        .filter_map(|f| account.creds.get(f.key))
+        .collect();
 
     let parsed = match adapter.parse_webhook(&ctx, &headers, &body).await {
         Ok(p) => p,
@@ -139,6 +153,7 @@ async fn receive(
                     verified: false,
                     outcome,
                     error: Some(e.to_string()),
+                    secrets: &secrets,
                 },
                 &headers,
                 &body,
@@ -189,6 +204,7 @@ async fn receive(
             verified: true,
             outcome,
             error,
+            secrets: &secrets,
         },
         &headers,
         &body,

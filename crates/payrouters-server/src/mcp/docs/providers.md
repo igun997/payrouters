@@ -9,7 +9,7 @@ Each account has its own **inbound webhook URL** (`{{base_url}}/hooks/<account-i
 | Midtrans | Server key (sandbox or production) and, for notifications, the Signature Secret Key (Settings, Access Keys) | Settings, Configuration, Payment Notification URL |
 | Xendit | Secret API key and the webhook verification token (`callback_token`) | Settings, Webhooks (payment and payment session events) |
 | IDRX | API key and secret, default wallet address and chain id. Live only, no sandbox. | Dashboard, API Key, Callback URL (mint) |
-| Mayar | API key (Read & Write; sandbox keys come from web.mayar.io) | Integration, Webhook (one URL per Mayar account) |
+| Mayar | API key (Read & Write; sandbox keys come from web.mayar.io) and optionally the Webhook Token (Integration, Webhook). Mayar does not document where the token travels, so when it is set any request header carrying it is accepted and a webhook without it is refused. | Integration, Webhook (one URL per Mayar account) |
 | PayPal | Client ID and secret; optional `currency` (default USD), fixed `idr_rate` (blank = ECB reference rate) and `webhook_id` | Developer, Apps & Credentials, the app's Webhooks: add the URL for Checkout order approved and Payment capture events, then copy its Webhook ID into the account |
 | Mock | none, created automatically in sandbox | not needed: use the simulator |
 

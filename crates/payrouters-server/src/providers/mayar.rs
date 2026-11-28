@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::*;
+use crate::util::secure_eq;
 
 pub struct Mayar;
 
@@ -119,6 +120,26 @@ pub(crate) fn webhook_target(v: &Value) -> Option<Uuid> {
     Uuid::parse_str(str_field(v.get("data")?, "productId")?).ok()
 }
 
+/// Whether any request header carries the webhook token: as its whole value, or as a bearer token.
+/// Mayar's documentation does not name the header, so none is assumed.
+pub(crate) fn carries_token(headers: &HeaderMap, token: &str) -> bool {
+    headers.values().filter_map(|v| v.to_str().ok()).any(|v| {
+        let v = v.trim();
+        let bearer = v
+            .get(..7)
+            .filter(|p| p.eq_ignore_ascii_case("bearer "))
+            .map(|_| v[7..].trim());
+        secure_eq(v, token) || bearer.is_some_and(|b| secure_eq(b, token))
+    })
+}
+
+/// Header names only, for the error that tells the owner where the token was not found.
+fn header_names(headers: &HeaderMap) -> String {
+    let mut names: Vec<&str> = headers.keys().map(|k| k.as_str()).collect();
+    names.sort_unstable();
+    names.join(", ")
+}
+
 async fn fetch_detail(
     ctx: &ProviderCtx<'_>,
     id: Uuid,
@@ -148,13 +169,22 @@ impl ProviderAdapter for Mayar {
             provider: Provider::Mayar,
             supports_sandbox: true,
             supports_provider_checkout: true,
-            credential_fields: vec![CredentialField {
-                key: "api_key",
-                label: "API key",
-                secret: true,
-                required: true,
-                placeholder: "Mayar dashboard → API Keys (Read & Write)",
-            }],
+            credential_fields: vec![
+                CredentialField {
+                    key: "api_key",
+                    label: "API key",
+                    secret: true,
+                    required: true,
+                    placeholder: "Mayar dashboard → API Keys (Read & Write)",
+                },
+                CredentialField {
+                    key: "webhook_token",
+                    label: "Webhook token",
+                    secret: true,
+                    required: false,
+                    placeholder: "Mayar dashboard → Integration → Webhook Token",
+                },
+            ],
             methods: vec![],
         }
     }
@@ -227,9 +257,20 @@ impl ProviderAdapter for Mayar {
     async fn parse_webhook(
         &self,
         ctx: &ProviderCtx<'_>,
-        _headers: &HeaderMap,
+        headers: &HeaderMap,
         body: &[u8],
     ) -> Result<ParsedWebhook, WebhookError> {
+        // Mayar's dashboard issues a webhook token "to verify that a webhook comes from Mayar".
+        // Its public documentation does not say where the token travels, so when one is set it
+        // is accepted wherever a header carries it, and a request without it is refused.
+        if let Some(token) = ctx.creds.get("webhook_token")
+            && !carries_token(headers, token)
+        {
+            return Err(WebhookError::Unauthorized(format!(
+                "the webhook token is not in this request (headers received: {})",
+                header_names(headers)
+            )));
+        }
         let v: Value = serde_json::from_slice(body)
             .map_err(|e| WebhookError::Malformed(format!("body is not JSON: {e}")))?;
         let ignore = ParsedWebhook {
@@ -388,5 +429,41 @@ mod tests {
         let hostile =
             json!({ "event": "payment.received", "data": { "productId": "../balances" } });
         assert_eq!(webhook_target(&hostile), None);
+    }
+
+    #[test]
+    fn the_webhook_token_may_travel_in_any_header() {
+        let token = "wh-token-0123456789";
+        let with = |name: &'static str, value: &str| {
+            let mut h = HeaderMap::new();
+            h.insert("content-type", "application/json".parse().unwrap());
+            h.insert(name, value.parse().unwrap());
+            h
+        };
+        assert!(carries_token(&with("x-mayar-token", token), token));
+        assert!(carries_token(&with("token", &format!(" {token} ")), token));
+        assert!(carries_token(
+            &with("authorization", &format!("Bearer {token}")),
+            token
+        ));
+        assert!(carries_token(
+            &with("authorization", &format!("bearer {token}")),
+            token
+        ));
+        // near misses and absence never count
+        assert!(!carries_token(
+            &with("x-mayar-token", "wh-token-012345678"),
+            token
+        ));
+        assert!(!carries_token(
+            &with("x-mayar-token", &format!("{token}x")),
+            token
+        ));
+        assert!(!carries_token(&with("authorization", "Basic abc"), token));
+        let mut none = HeaderMap::new();
+        none.insert("content-type", "application/json".parse().unwrap());
+        assert!(!carries_token(&none, token));
+        assert!(!carries_token(&HeaderMap::new(), token));
+        assert_eq!(header_names(&none), "content-type");
     }
 }

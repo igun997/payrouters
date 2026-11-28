@@ -1208,7 +1208,7 @@ async fn mayar_and_paypal_accounts_are_catalogued_and_can_be_a_product_default(p
         .as_array()
         .unwrap()
         .iter()
-        .find(|a| a["provider"] == "paypal")
+        .find(|a| a["provider"] == "paypal" && a["mode"] == "sandbox")
         .unwrap();
     assert_eq!(paypal["credentials"]["idr_rate"], "16000");
     assert_ne!(paypal["credentials"]["client_secret"], "secret-value-1234");
@@ -1393,4 +1393,53 @@ async fn snap_return_and_cancel_land_on_the_snap_page(pool: PgPool) {
             .await;
         assert_eq!(unknown.status, StatusCode::NOT_FOUND, "{tail}");
     }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn mayar_webhook_token_is_required_when_set_and_never_stored(pool: PgPool) {
+    let app = App::new(pool).await;
+    let token = "wh-token-0123456789abcdef";
+    let (mayar, _) = app
+        .provider(
+            "mayar",
+            "sandbox",
+            json!({ "api_key": "mayar-key", "webhook_token": token }),
+        )
+        .await;
+    let url = format!("/hooks/{mayar}");
+    // an authentic event that needs no call to Mayar: a payment reminder
+    let reminder = json!({
+        "event": "payment.reminder",
+        "data": { "productId": "7c9d2e1f-3a4b-4c5d-8e6f-1a2b3c4d5e6f" }
+    })
+    .to_string();
+
+    let without = app
+        .call("POST", &url, None, &[], Some(reminder.clone()))
+        .await;
+    assert_eq!(without.status, StatusCode::UNAUTHORIZED, "{}", without.text);
+    assert!(without.text.contains("content-type"), "{}", without.text);
+    let wrong = app
+        .call(
+            "POST",
+            &url,
+            None,
+            &[("x-mayar-token", "not-the-token")],
+            Some(reminder.clone()),
+        )
+        .await;
+    assert_eq!(wrong.status, StatusCode::UNAUTHORIZED, "{}", wrong.text);
+
+    // the token is accepted in whichever header carries it
+    for header in [("x-mayar-token", token), ("some-other-name", token)] {
+        let ok = app
+            .call("POST", &url, None, &[header], Some(reminder.clone()))
+            .await;
+        assert_eq!(ok.status, StatusCode::OK, "{} {}", header.0, ok.text);
+    }
+
+    // the secret is not written to the inbox, whatever the header was called
+    let events = app.admin("GET", "/admin/webhook-events", None).await;
+    assert!(events.text.contains("[redacted]"), "{}", events.text);
+    assert!(!events.text.contains(token), "{}", events.text);
 }
