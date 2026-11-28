@@ -34,7 +34,7 @@ const pr = new PayRouters({
 const { payment, replayed } = await pr.payments.create({
   order_id: 'INV-2026-0001',                  // unique per product and mode, ≤ 64 chars
   amount: 150_000,                            // integer rupiah
-  provider: 'midtrans',                       // optional; default is the product's default
+  provider: 'midtrans',                       // optional; omit it to use the product's payment options (or its default provider)
   checkout: 'snap',                           // 'snap' (default) | 'provider'
   method: 'va_bca',                           // optional; with 'snap' creates the charge now
   description: 'Order #1',

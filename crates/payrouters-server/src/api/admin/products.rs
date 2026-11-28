@@ -12,6 +12,7 @@ use uuid::Uuid;
 use super::double_option;
 use crate::error::{ApiJson, AppError, Result, is_unique_violation};
 use crate::models::{ApiKeyRow, ApiKeyView, ProductRow};
+use crate::services::options::{self, OptionInput, OptionsView};
 use crate::state::AppState;
 use crate::util::{new_id, random_hex, sha256_hex, slugify};
 
@@ -25,6 +26,10 @@ pub fn routes() -> Router<AppState> {
         .route("/products/{id}/webhook-secret/rotate", post(rotate_secret))
         .route("/products/{id}/api-keys", post(create_key))
         .route("/products/{id}/api-keys/{key_id}", delete(revoke_key))
+        .route(
+            "/products/{id}/payment-options",
+            get(get_options).put(put_options),
+        )
 }
 
 #[derive(Serialize)]
@@ -34,17 +39,20 @@ pub(crate) struct ProductView {
     slug: String,
     webhook_url: Option<String>,
     default_provider: Option<String>,
+    /// The payment options the product offers (empty: one provider, see `default_provider`).
+    payment_options: Vec<OptionInput>,
     api_keys: Vec<ApiKeyView>,
     created_at: DateTime<Utc>,
 }
 
-fn view(p: ProductRow, keys: Vec<ApiKeyRow>) -> ProductView {
+fn view(p: ProductRow, keys: Vec<ApiKeyRow>, options: Vec<OptionInput>) -> ProductView {
     ProductView {
         id: p.id,
         name: p.name,
         slug: p.slug,
         webhook_url: p.webhook_url,
         default_provider: p.default_provider,
+        payment_options: options,
         api_keys: keys.into_iter().map(Into::into).collect(),
         created_at: p.created_at,
     }
@@ -68,7 +76,12 @@ async fn one(state: &AppState, id: Uuid) -> Result<ProductView> {
             .await?
             .ok_or_else(|| AppError::not_found("product"))?;
     let keys = keys_for(state, &[id]).await?;
-    Ok(view(p, keys))
+    let opts = options::list(state, id)
+        .await?
+        .iter()
+        .map(OptionInput::from)
+        .collect();
+    Ok(view(p, keys, opts))
 }
 
 pub(crate) async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
@@ -78,6 +91,7 @@ pub(crate) async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
             .await?;
     let ids: Vec<Uuid> = products.iter().map(|p| p.id).collect();
     let keys = keys_for(&state, &ids).await?;
+    let opts = options::list_for(&state, &ids).await?;
     let data: Vec<ProductView> = products
         .into_iter()
         .map(|p| {
@@ -86,7 +100,12 @@ pub(crate) async fn list(State(state): State<AppState>) -> Result<Json<Value>> {
                 .filter(|k| k.product_id == p.id)
                 .cloned()
                 .collect();
-            view(p, k)
+            let o = opts
+                .iter()
+                .filter(|(id, _)| *id == p.id)
+                .map(|(_, o)| OptionInput::from(o))
+                .collect();
+            view(p, k, o)
         })
         .collect();
     Ok(Json(json!({ "data": data })))
@@ -303,4 +322,27 @@ pub(crate) async fn revoke_key(
         return Err(AppError::not_found("API key"));
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The product's payment options and what could be added (providers with an enabled account).
+pub(crate) async fn get_options(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<OptionsView>> {
+    Ok(Json(options::view(&state, id).await?))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PutOptions {
+    options: Vec<OptionInput>,
+}
+
+/// Replace the product's payment options. An empty list clears them: the product goes back to one
+/// provider (the `provider` of the request, its default, then the first enabled one).
+pub(crate) async fn put_options(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    ApiJson(body): ApiJson<PutOptions>,
+) -> Result<Json<OptionsView>> {
+    Ok(Json(options::set(&state, id, &body.options).await?))
 }

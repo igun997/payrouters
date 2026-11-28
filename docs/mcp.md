@@ -87,11 +87,13 @@ A tool result is `{ "content": [{ "type": "text", "text": "..." }], "structuredC
 
 ### Tools
 
-`read`: `get_integration_status`, `get_env_template`, `list_products`, `list_provider_accounts`, `list_payment_methods`, `list_payments`, `get_payment`, `list_webhook_deliveries`, `list_inbound_webhook_events`, `get_stats_summary`, `get_docs`, `generate_code`, `wait_for_payment`.
+`read`: `get_integration_status`, `get_env_template`, `list_products`, `get_product_payment_options`, `list_provider_accounts`, `list_payment_methods`, `list_payments`, `get_payment`, `list_webhook_deliveries`, `list_inbound_webhook_events`, `get_stats_summary`, `get_docs`, `generate_code`, `wait_for_payment`.
 
-`write`: `create_product`, `update_product`, `rotate_webhook_secret`, `create_api_key`, `revoke_api_key`, `create_test_payment`, `simulate_payment`, `sync_payment`, `retry_webhook_delivery`, `test_webhook_integration`, `run_integration_selftest`.
+`write`: `create_product`, `update_product`, `set_product_payment_options`, `rotate_webhook_secret`, `create_api_key`, `revoke_api_key`, `create_test_payment`, `simulate_payment`, `sync_payment`, `retry_webhook_delivery`, `test_webhook_integration`, `run_integration_selftest`.
 
 `get_integration_status` is the entry point: base URL, which provider accounts are enabled per mode, each product with its webhook URL and active keys, and an ordered `next_steps` list ("create a product", "add a webhook URL", "create a sandbox key", ...). `generate_code` returns ready code (`curl`, `typescript`, `python`, `php`) for creating a payment, verifying a webhook and reading a payment, with this deployment's base URL filled in. `test_webhook_integration` creates a mock sandbox payment for a product, marks it paid and reports what the product's webhook endpoint answered (status code, error, attempts).
+
+**Payment options** (topic `payment-options`): one product can combine providers, for example QRIS on Midtrans, virtual accounts on Xendit and PayPal for overseas customers. `get_product_payment_options` returns the product's selection and what could be chosen (every provider with an enabled account, its methods, whether it has a hosted checkout); `set_product_payment_options` replaces the selection with a list of `{ option, provider }` where `option` is a method code or `checkout:<provider>` (a method has one provider; an empty list clears the selection). `list_products` shows `payment_options` per product, `get_integration_status` suggests setting them when several providers are enabled, and `create_test_payment` follows them when `provider` is omitted. Changing a product that already has live keys needs the `live` scope, like `update_product`.
 
 **Self-testing the application being integrated** (sandbox only, topic `testing`): `run_integration_selftest` delivers signed `payment.paid`, `payment.failed` and `payment.expired` events from mock payments to the product's `webhook_url`, then probes a wrong signature, a missing signature and a stale timestamp (a correct endpoint refuses all three) and the same event twice (it must answer 2xx), and returns a `pass`/`warn`/`fail`/`skipped` checklist with the fix for each; it stops early when nothing answers. `wait_for_payment` (read; waits up to 30 s) returns the payment the running application created through the API with its sandbox key, ignoring `MCP-TEST-` payments, or `found: false` with advice. `simulate_payment` then pays it and, when the product has a webhook URL, delivers the event right away and reports what the application's endpoint answered (`deliver_now: false` skips that).
 
@@ -99,7 +101,7 @@ Secrets: `create_product` and `rotate_webhook_secret` return the webhook secret 
 
 ### Resources and prompts
 
-Resources (`resources/list`): `payrouters://docs/<topic>` for `overview`, `authentication`, `create-payment`, `checkout-and-methods`, `payment-status`, `webhooks`, `errors-and-limits`, `sandbox`, `testing`, `providers` (markdown, this deployment's base URL filled in). `get_docs` returns the same text for clients that only support tools.
+Resources (`resources/list`): `payrouters://docs/<topic>` for `overview`, `authentication`, `create-payment`, `checkout-and-methods`, `payment-status`, `webhooks`, `errors-and-limits`, `sandbox`, `testing`, `providers`, `payment-options` (markdown, this deployment's base URL filled in). `get_docs` returns the same text for clients that only support tools.
 
 Prompts: `integrate_payrouters` (arguments `language`, `framework`), `self_test_integration` (argument `product`: tests the running application end to end in sandbox), `debug_payment` (`payment_id` or `order_id`), `go_live_checklist`.
 

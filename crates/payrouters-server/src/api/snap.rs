@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::error::{ApiJson, AppError, Result};
 use crate::models::PaymentRow;
 use crate::providers;
-use crate::services::payments;
+use crate::services::{options, payments};
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -50,11 +50,49 @@ struct SnapPayment {
 struct SnapView {
     merchant_name: String,
     payment: SnapPayment,
+    /// Standard methods the customer can pick.
     methods: Vec<MethodInfo>,
+    /// Provider-hosted checkouts the customer can pick (PayPal, Mayar, ...).
+    checkouts: Vec<SnapCheckout>,
     allow_simulate: bool,
 }
 
-fn view(row: &PaymentRow) -> Result<SnapView> {
+#[derive(Serialize)]
+struct SnapCheckout {
+    provider: Provider,
+    label: &'static str,
+}
+
+/// What the customer can still pick: the product's payment options for a payment created from
+/// them, otherwise the methods of the payment's own provider. Methods a provider account has been
+/// seen to refuse are left out while anything else remains.
+async fn picker(
+    state: &AppState,
+    row: &PaymentRow,
+    provider: Provider,
+) -> Result<(Vec<MethodInfo>, Vec<SnapCheckout>)> {
+    if row.routed
+        && let Some(usable) = options::usable(state, row.product_id, row.mode()?).await?
+        && !usable.is_empty()
+    {
+        let p = options::picker(&usable);
+        return Ok((
+            p.methods.iter().map(|(m, _)| m.info()).collect(),
+            p.checkouts
+                .iter()
+                .map(|p| SnapCheckout {
+                    provider: *p,
+                    label: p.label(),
+                })
+                .collect(),
+        ));
+    }
+    let all = providers::adapter(provider).info().methods;
+    let methods = providers::availability::offered(row.provider_account_id, &all);
+    Ok((methods.iter().map(|m| m.info()).collect(), vec![]))
+}
+
+async fn view(state: &AppState, row: &PaymentRow) -> Result<SnapView> {
     let status = row.status()?;
     let provider = row.provider()?;
     let mode = row.mode()?;
@@ -62,15 +100,10 @@ fn view(row: &PaymentRow) -> Result<SnapView> {
         && row.instructions.is_none()
         && row.method.is_none()
         && row.expires_at > Utc::now();
-    let methods = if selectable {
-        // Methods the provider has refused for this account are not offered while any other is.
-        let all = providers::adapter(provider).info().methods;
-        providers::availability::offered(row.provider_account_id, &all)
-            .iter()
-            .map(|m| m.info())
-            .collect()
+    let (methods, checkouts) = if selectable {
+        picker(state, row, provider).await?
     } else {
-        vec![]
+        (vec![], vec![])
     };
     Ok(SnapView {
         merchant_name: row.product_name.clone().unwrap_or_default(),
@@ -92,17 +125,21 @@ fn view(row: &PaymentRow) -> Result<SnapView> {
             return_url: row.return_url.clone(),
         },
         methods,
+        checkouts,
         allow_simulate: provider == Provider::Mock && status == PaymentStatus::Pending,
     })
 }
 
 async fn show(State(state): State<AppState>, Path(token): Path<String>) -> Result<Json<SnapView>> {
-    Ok(Json(view(&payments::get_by_token(&state, &token).await?)?))
+    let row = payments::get_by_token(&state, &token).await?;
+    Ok(Json(view(&state, &row).await?))
 }
 
+/// The customer's pick: exactly one of a standard `method` or a hosted-checkout `provider`.
 #[derive(Deserialize)]
 struct PayBody {
-    method: Method,
+    method: Option<Method>,
+    provider: Option<Provider>,
 }
 
 async fn pay(
@@ -110,8 +147,17 @@ async fn pay(
     Path(token): Path<String>,
     ApiJson(body): ApiJson<PayBody>,
 ) -> Result<Json<SnapView>> {
-    let row = payments::choose_method(&state, &token, body.method).await?;
-    Ok(Json(view(&row)?))
+    let choice = match (body.method, body.provider) {
+        (Some(m), None) => payments::Choice::Method(m),
+        (None, Some(p)) => payments::Choice::Checkout(p),
+        _ => {
+            return Err(AppError::bad_request(
+                "send exactly one of `method` or `provider`",
+            ));
+        }
+    };
+    let row = payments::choose(&state, &token, choice).await?;
+    Ok(Json(view(&state, &row).await?))
 }
 
 #[derive(Deserialize)]
@@ -132,7 +178,7 @@ async fn simulate(
         ));
     }
     let row = payments::simulate(&state, row.id, body.outcome).await?;
-    Ok(Json(view(&row)?))
+    Ok(Json(view(&state, &row).await?))
 }
 
 /// Where a provider sends the payer back after approving a hosted checkout (PayPal). Approval does

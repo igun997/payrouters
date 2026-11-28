@@ -14,6 +14,7 @@
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
+	import Wallet from '@lucide/svelte/icons/wallet';
 	import Pill from '#lib/components/app/pill.svelte';
 	import { cn } from '#lib/utils';
 	import { keyDate } from '#lib/key-format';
@@ -22,9 +23,11 @@
 	let {
 		product,
 		providerLabel,
+		paymentSummary,
 		expanded,
 		onToggle,
 		onEdit,
+		onPaymentOptions,
 		onRotate,
 		onArchive,
 		onCreateKey,
@@ -33,9 +36,12 @@
 		product: Product;
 		/** Human label of the default provider, or "No default". */
 		providerLabel: string;
+		/** The payment options in one line, or "Single provider". */
+		paymentSummary: string;
 		expanded: boolean;
 		onToggle: () => void;
 		onEdit: () => void;
+		onPaymentOptions: () => void;
 		onRotate: () => void;
 		onArchive: () => void;
 		onCreateKey: () => void;
@@ -58,6 +64,7 @@
 
 	const menuItems = $derived<MenuItem[]>([
 		{ label: 'Edit', icon: Pencil, onselect: onEdit },
+		{ label: 'Payment options', icon: Wallet, onselect: onPaymentOptions },
 		{ label: 'Rotate secret', icon: RotateCw, onselect: onRotate },
 		{ label: 'Archive product', icon: Archive, destructive: true, onselect: onArchive }
 	]);
@@ -102,6 +109,10 @@
 						Not set. Deliveries are skipped.
 					</span>
 				{/if}
+			</div>
+			<div class="flex min-w-0 flex-1 flex-col gap-1" data-testid="product-payment-options">
+				<span class="text-helper text-muted-foreground">Payment options</span>
+				<span class="text-body break-words text-foreground">{paymentSummary}</span>
 			</div>
 			<div class="flex items-center justify-between gap-3 text-body lg:hidden">
 				<span class="text-muted-foreground">Created</span>

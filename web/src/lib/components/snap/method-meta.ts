@@ -1,5 +1,5 @@
 // Labels for payment methods and bank codes on the Snap page. Codes follow docs/api.md.
-import type { Method } from '#lib/api/types';
+import type { Method, PayChoice } from '#lib/api/types';
 
 export const METHOD_LABEL: Record<Method, string> = {
 	va_bca: 'BCA Virtual Account',
@@ -44,4 +44,9 @@ export function bankName(bank: string): string {
 /** Short name used in progress copy, e.g. "Connecting to BNI". */
 export function methodShortName(code: string): string {
 	return BADGE[code] ?? code;
+}
+
+/** Key of a pay choice in the Snap page's state: the method code, or `checkout:<provider>`. */
+export function choiceKey(choice: PayChoice): string {
+	return 'method' in choice ? choice.method : `checkout:${choice.provider}`;
 }

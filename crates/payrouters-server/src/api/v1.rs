@@ -16,7 +16,7 @@ use super::auth::ProductAuth;
 use crate::error::{ApiJson, ApiQuery, AppError, Result};
 use crate::models::PaymentRow;
 use crate::providers;
-use crate::services::{accounts, payments};
+use crate::services::{accounts, options, payments};
 use crate::state::AppState;
 use crate::util::Cursor;
 
@@ -138,7 +138,22 @@ async fn list(
     Ok(Json(ListResponse { data, next_cursor }))
 }
 
+/// What the product can use in the key's mode: its payment options when it has any with an enabled
+/// provider account, otherwise every provider with an enabled account.
 async fn methods(State(state): State<AppState>, auth: ProductAuth) -> Result<Json<MethodCatalog>> {
+    if let Some(usable) = options::usable(&state, auth.product.id, auth.mode).await?
+        && !usable.is_empty()
+    {
+        let data = options::catalog(&usable)
+            .into_iter()
+            .map(|(provider, checkout, methods)| ProviderMethods {
+                provider,
+                checkout_provider: checkout,
+                methods: methods.iter().map(|m| m.info()).collect(),
+            })
+            .collect();
+        return Ok(Json(MethodCatalog { data }));
+    }
     let enabled = accounts::enabled_providers(&state, auth.mode).await?;
     let data = providers::PROVIDER_ORDER
         .into_iter()

@@ -1443,3 +1443,231 @@ async fn mayar_webhook_token_is_required_when_set_and_never_stored(pool: PgPool)
     assert!(events.text.contains("[redacted]"), "{}", events.text);
     assert!(!events.text.contains(token), "{}", events.text);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_product_can_combine_providers_through_its_payment_options(pool: PgPool) {
+    use payrouters_server::services::options;
+    use payrouters_types::{Checkout, Method, Mode, Provider};
+
+    let app = App::new(pool).await;
+    app.provider(
+        "midtrans",
+        "sandbox",
+        json!({ "server_key": "SB-Mid-server-k" }),
+    )
+    .await;
+    app.provider(
+        "xendit",
+        "sandbox",
+        json!({ "secret_key": "xnd_development_k", "callback_token": "cb" }),
+    )
+    .await;
+    app.provider(
+        "paypal",
+        "sandbox",
+        json!({ "client_id": "cid", "client_secret": "s", "idr_rate": "16000" }),
+    )
+    .await;
+    let (pid, _, key, _) = app.product_with_keys("Shop", None).await;
+    let uri = format!("/admin/products/{pid}/payment-options");
+
+    // nothing chosen yet; the dashboard is told what it can choose from
+    let none = app.admin("GET", &uri, None).await;
+    assert_eq!(none.status, StatusCode::OK, "{}", none.text);
+    assert_eq!(none.json["data"], json!([]));
+    let providers: Vec<&str> = none.json["available"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["provider"].as_str().unwrap())
+        .collect();
+    assert_eq!(providers, ["midtrans", "xendit", "paypal", "mock"]);
+    let paypal = &none.json["available"][2];
+    assert_eq!(paypal["checkout"], true);
+    assert_eq!(paypal["methods"], json!([]));
+    assert_eq!(paypal["modes"], json!(["sandbox"]));
+
+    // QRIS on Midtrans, virtual accounts on Xendit, PayPal for overseas customers
+    let chosen = json!({ "options": [
+        { "option": "qris", "provider": "midtrans" },
+        { "option": "va_bca", "provider": "xendit" },
+        { "option": "va_bni", "provider": "xendit" },
+        { "option": "checkout:paypal", "provider": "paypal" }
+    ] });
+    let saved = app.admin("PUT", &uri, Some(chosen.clone())).await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", saved.text);
+    assert_eq!(saved.json["data"], chosen["options"]);
+    let product = app.admin("GET", "/admin/products", None).await;
+    assert_eq!(
+        product.json["data"][0]["payment_options"],
+        chosen["options"]
+    );
+
+    // refused: a method on a provider that cannot serve it, a method twice, an unknown product
+    for (bad, why) in [
+        (
+            json!({ "options": [{ "option": "qris", "provider": "paypal" }] }),
+            "unsupported",
+        ),
+        (
+            json!({ "options": [
+                { "option": "qris", "provider": "midtrans" },
+                { "option": "qris", "provider": "xendit" }
+            ] }),
+            "twice",
+        ),
+    ] {
+        let r = app.admin("PUT", &uri, Some(bad)).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{why}: {}", r.text);
+    }
+    let gone = app
+        .admin(
+            "PUT",
+            &format!("/admin/products/{}/payment-options", uuid::Uuid::nil()),
+            Some(json!({ "options": [] })),
+        )
+        .await;
+    assert_eq!(gone.status, StatusCode::NOT_FOUND);
+    // a refused save changed nothing
+    let still = app.admin("GET", &uri, None).await;
+    assert_eq!(still.json["data"], chosen["options"]);
+
+    // routing, without any provider being contacted
+    let product_id: uuid::Uuid = pid.parse().unwrap();
+    let route = |provider, method, checkout| {
+        let state = app.state.clone();
+        async move {
+            options::route(
+                &state,
+                product_id,
+                Mode::Sandbox,
+                provider,
+                method,
+                checkout,
+            )
+            .await
+        }
+    };
+    let r = route(None, Some(Method::Qris), Checkout::Snap)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((r.provider, r.hosted_now), (Provider::Midtrans, false));
+    let r = route(None, Some(Method::VaBni), Checkout::Snap)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(r.provider, Provider::Xendit);
+    assert!(
+        route(None, Some(Method::VaMandiri), Checkout::Snap)
+            .await
+            .is_err()
+    );
+    let r = route(None, None, Checkout::Provider)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((r.provider, r.hosted_now), (Provider::Paypal, true));
+    // an explicit provider is not routed by the options
+    assert!(
+        route(Some(Provider::Midtrans), None, Checkout::Snap)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // the same product in live mode: none of its providers has a live account
+    let live = options::route(
+        &app.state,
+        product_id,
+        Mode::Live,
+        None,
+        None,
+        Checkout::Snap,
+    )
+    .await;
+    assert!(live.is_err());
+
+    // a payment without a method waits for the customer on the Snap page
+    let created = app
+        .product(
+            "POST",
+            "/v1/payments",
+            &key,
+            Some(json!({ "order_id": "OPT-1", "amount": 129000 })),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.text);
+    assert!(created.json["instructions"].is_null());
+    assert_eq!(created.json["provider"], "midtrans");
+    let token = token_of(created.json["snap_url"].as_str().unwrap());
+    let view = app
+        .call("GET", &format!("/snap/api/{token}"), None, &[], None)
+        .await;
+    let methods: Vec<&str> = view.json["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(methods, ["qris", "va_bca", "va_bni"]);
+    assert_eq!(
+        view.json["checkouts"],
+        json!([{ "provider": "paypal", "label": "PayPal" }])
+    );
+    // what the product does not offer is refused before any provider is asked
+    for (body, code) in [
+        (json!({ "method": "va_mandiri" }), "method_unsupported"),
+        (json!({ "provider": "mayar" }), "checkout_unsupported"),
+        (json!({ "provider": "midtrans" }), "checkout_unsupported"),
+    ] {
+        let r = app
+            .call(
+                "POST",
+                &format!("/snap/api/{token}/pay"),
+                None,
+                &[],
+                Some(body.to_string()),
+            )
+            .await;
+        assert_eq!(r.json["error"]["code"], code, "{}", r.text);
+    }
+    // replaying the order is still a replay, whichever provider the customer ends up on
+    let replay = app
+        .product(
+            "POST",
+            "/v1/payments",
+            &key,
+            Some(json!({ "order_id": "OPT-1", "amount": 129000 })),
+        )
+        .await;
+    assert_eq!(replay.status, StatusCode::OK, "{}", replay.text);
+
+    // `GET /v1/methods` shows what this product offers, grouped by provider
+    let catalog = app.product("GET", "/v1/methods", &key, None).await;
+    let grouped: Vec<(String, bool, usize)> = catalog.json["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["provider"].as_str().unwrap().to_string(),
+                p["checkout_provider"].as_bool().unwrap(),
+                p["methods"].as_array().unwrap().len(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        grouped,
+        [
+            ("midtrans".to_string(), false, 1),
+            ("xendit".to_string(), false, 2),
+            ("paypal".to_string(), true, 0)
+        ]
+    );
+
+    // clearing returns to the single-provider behaviour
+    let cleared = app.admin("PUT", &uri, Some(json!({ "options": [] }))).await;
+    assert_eq!(cleared.json["data"], json!([]));
+    let all = app.product("GET", "/v1/methods", &key, None).await;
+    assert_eq!(all.json["data"].as_array().unwrap().len(), 4);
+}

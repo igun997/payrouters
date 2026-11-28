@@ -6,7 +6,7 @@
 	import type { ApiKey, ApiKeyCreated, Meta, Product, ProviderAccount } from '#lib/api/types';
 	import { prefs } from '#lib/state/prefs.svelte';
 	import { Resource } from '#lib/state/resource.svelte';
-	import { loadMeta, providerLabels } from '#lib/state/catalog.svelte';
+	import { loadMeta, methodLabels, providerLabels } from '#lib/state/catalog.svelte';
 	import { IsMobile } from '#lib/hooks/is-mobile.svelte';
 	import { Button } from '#lib/components/ui/button';
 	import { Input } from '#lib/components/ui/input';
@@ -19,6 +19,8 @@
 	import OneTimeSecret from '#lib/components/app/one-time-secret.svelte';
 	import ProductCard from '#lib/components/app/product-card.svelte';
 	import ProductForm from '#lib/components/app/product-form.svelte';
+	import PaymentOptionsDialog from '#lib/components/app/payment-options-dialog.svelte';
+	import { summarizePaymentOptions } from '#lib/payment-options';
 	import { blankProductForm, type ProductFormValues } from '#lib/product-form';
 	import OnboardingChecklist from '#lib/components/app/onboarding-checklist.svelte';
 	import type { ChecklistStep } from '#lib/checklist';
@@ -50,6 +52,7 @@
 	const meta = new Resource<Meta>();
 	const list = $derived(products.data?.data ?? []);
 	const labels = $derived(providerLabels(meta.data));
+	const methodNames = $derived(methodLabels(meta.data));
 	const providerOptions = $derived([
 		{ value: '', label: 'No default' },
 		...Object.entries(labels).map(([value, label]) => ({ value, label }))
@@ -198,6 +201,15 @@
 		} finally {
 			saving = false;
 		}
+	}
+
+	// Payment options (checklist of methods and hosted checkouts)
+	let optionsOpen = $state(false);
+	let optionsTarget = $state<Product | null>(null);
+
+	function openPaymentOptions(product: Product) {
+		optionsTarget = product;
+		optionsOpen = true;
 	}
 
 	// Rotate webhook secret (confirm, then reveal)
@@ -399,9 +411,11 @@
 					providerLabel={product.default_provider
 						? (labels[product.default_provider] ?? product.default_provider)
 						: 'No default'}
+					paymentSummary={summarizePaymentOptions(product.payment_options, labels, methodNames)}
 					expanded={!!expanded[product.id]}
 					onToggle={() => toggleKeys(product)}
 					onEdit={() => openEdit(product)}
+					onPaymentOptions={() => openPaymentOptions(product)}
 					onRotate={() => openRotate(product)}
 					onArchive={() => openArchive(product)}
 					onCreateKey={() => openCreateKey(product)}
@@ -493,6 +507,9 @@
 		</Button>
 	{/snippet}
 </ResponsiveDialog>
+
+<!-- Payment options -->
+<PaymentOptionsDialog bind:open={optionsOpen} product={optionsTarget} onsaved={refresh} />
 
 <!-- Rotate webhook secret -->
 <ConfirmDialog

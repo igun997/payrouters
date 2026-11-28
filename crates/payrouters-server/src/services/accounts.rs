@@ -101,6 +101,19 @@ pub async fn enabled_providers(state: &AppState, mode: Mode) -> Result<Vec<Provi
     Ok(rows.into_iter().filter_map(|(p,)| p.parse().ok()).collect())
 }
 
+/// The enabled accounts of `mode` as `(provider, account id)`, without decrypting anything.
+pub async fn enabled_accounts(state: &AppState, mode: Mode) -> Result<Vec<(Provider, Uuid)>> {
+    let rows: Vec<(String, Uuid)> =
+        sqlx::query_as("SELECT provider, id FROM provider_accounts WHERE mode = $1 AND enabled")
+            .bind(mode.as_str())
+            .fetch_all(&state.pool)
+            .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(p, id)| p.parse().ok().map(|p| (p, id)))
+        .collect())
+}
+
 /// The simulator is always available in sandbox so the playground works on a fresh install.
 pub async fn seed_mock(state: &AppState) -> anyhow::Result<()> {
     let creds = encrypt_creds(state, &BTreeMap::new()).map_err(|e| anyhow::anyhow!("{e}"))?;

@@ -15,6 +15,9 @@ Errors are JSON with an HTTP status:
 | 409 | `method_already_selected` | The payment already has instructions. |
 | 422 | `provider_unavailable` | No enabled provider account for this mode. Add one in the dashboard (Providers) or use `mock` in sandbox. |
 | 422 | `method_unsupported` | The provider does not offer that method. |
+| 422 | `method_not_enabled` | The product has payment options and this method is not among them (topic `payment-options`). |
+| 422 | `checkout_unsupported` | The provider (or the product's options) has no provider-hosted checkout for this request. |
+| 422 | `channel_not_activated` | The provider says the channel is not activated on the account and has no hosted checkout to fall back to. |
 | 422 | `sandbox_unsupported` | A sandbox key asked for IDRX, which has no sandbox. |
 | 429 | `rate_limited` | Too many failed attempts or requests. Wait `Retry-After` seconds. |
 | 502 | `provider_error` | The provider answered with an error. Safe to retry with the same `order_id`. |

@@ -15,6 +15,7 @@
 		{ id: 'authentication', label: 'Authentication' },
 		{ id: 'create-payment', label: 'Create a payment' },
 		{ id: 'checkout', label: 'Checkout and methods' },
+		{ id: 'payment-options', label: 'Payment options' },
 		{ id: 'status', label: 'Payment status' },
 		{ id: 'webhooks', label: 'Webhooks' },
 		{ id: 'snap', label: 'The Snap page' },
@@ -38,7 +39,7 @@
 		{
 			name: 'provider',
 			type: 'string',
-			note: 'midtrans, xendit, idrx, mayar, paypal or mock. Defaults to the product default, then the first enabled provider of the key mode.'
+			note: 'midtrans, xendit, idrx, mayar, paypal or mock. Bypasses the product payment options. Without it, see Payment options.'
 		},
 		{
 			name: 'checkout',
@@ -48,7 +49,7 @@
 		{
 			name: 'method',
 			type: 'string',
-			note: 'va_bca, va_bni, va_bri, va_mandiri, va_permata or qris. With snap it creates the charge now.'
+			note: 'va_bca, va_bni, va_bri, va_mandiri, va_permata or qris. With snap it creates the charge now, on the provider the product offers for this method.'
 		},
 		{ name: 'description', type: 'string', note: 'Shown to the customer.' },
 		{ name: 'customer', type: 'object', note: 'name, email and phone, all optional.' },
@@ -141,6 +142,19 @@
     "customer": { "name": "Budi", "email": "budi@example.com" },
     "return_url": "https://app.example.com/thanks"
   }'`;
+
+	const optionsJson = `{
+  "data": [
+    { "option": "qris", "provider": "midtrans" },
+    { "option": "va_bca", "provider": "xendit" },
+    { "option": "checkout:paypal", "provider": "paypal" }
+  ],
+  "available": [ { "provider": "midtrans", "label": "Midtrans", "modes": ["sandbox", "live"], "methods": [...], "checkout": true } ]
+}`;
+
+	const snapPayBody = `{ "method": "va_bca" }
+
+{ "provider": "paypal" }`;
 
 	const createResponse = `{
   "id": "0192...",
@@ -321,10 +335,86 @@ console.log(payment.snap_url, payment.payable_amount ?? payment.amount);`;
 				providers add their fee on top.
 			</p>
 			<p class="text-body text-muted-foreground">
-				List what your key can use right now. Only providers with an enabled account in the key's
-				mode appear.
+				<code class="text-mono-id font-mono">GET /v1/methods</code> lists what this product can offer
+				right now: its payment options, with only the providers that have an enabled account in the key's
+				mode.
 			</p>
 			<CodeBlock code={methodsCurl} caption="Request (curl)" />
+		</section>
+
+		<section
+			id="payment-options"
+			class="flex scroll-mt-4 flex-col gap-3 rounded-lg border bg-card p-card"
+		>
+			<h2 class="text-card-title">Payment options</h2>
+			<p class="text-body text-muted-foreground">
+				A product can offer a checklist of payment options, and each option is served by one
+				provider. One product can combine providers: QRIS through Midtrans, virtual accounts through
+				Xendit and PayPal for overseas customers. Set the checklist on the
+				<a class="underline underline-offset-4" href={resolve('/(admin)/products')}>Products</a>
+				page, under Payment options for each product.
+			</p>
+			<ul class="flex list-disc flex-col gap-2 pl-5 text-body text-muted-foreground">
+				<li>
+					<strong class="text-foreground">Standard methods</strong> (<code
+						class="text-mono-id font-mono"
+					>
+						va_bca
+					</code>, <code class="text-mono-id font-mono">qris</code> and the other method codes) are served
+					by exactly one provider per product. Checking a method under another provider moves it.
+				</li>
+				<li>
+					<strong class="text-foreground">Hosted checkouts</strong> use the key
+					<code class="text-mono-id font-mono">checkout:&lt;provider&gt;</code>, for example
+					<code class="text-mono-id font-mono">checkout:paypal</code> or
+					<code class="text-mono-id font-mono">checkout:mayar</code>. Several can be enabled at
+					once. PayPal and Mayar have no standard methods, so their only option is the checkout.
+				</li>
+				<li>
+					Each option is stored as an <code class="text-mono-id font-mono">option</code> and a
+					<code class="text-mono-id font-mono">provider</code>. The admin API reads and replaces the
+					list with <code class="text-mono-id font-mono">GET</code> and
+					<code class="text-mono-id font-mono">PUT /admin/products/:id/payment-options</code>.
+				</li>
+			</ul>
+			<CodeBlock code={optionsJson} caption="GET response (shortened)" />
+
+			<h3 class="text-label">How payments are routed</h3>
+			<ul class="flex list-disc flex-col gap-2 pl-5 text-body text-muted-foreground">
+				<li>
+					With options set, a payment created without <code class="text-mono-id font-mono">
+						provider
+					</code>
+					is served from them. A requested <code class="text-mono-id font-mono">method</code> goes to
+					the provider chosen for it.
+				</li>
+				<li>
+					The Snap page lists the product's methods and its hosted checkouts. Each pick is charged
+					on the provider it belongs to.
+				</li>
+				<li>
+					A mode uses only the options whose provider has an enabled account in that mode. Sandbox
+					falls back to the mock simulator when none of them does.
+				</li>
+				<li>
+					With no options the product keeps the old behaviour: the
+					<code class="text-mono-id font-mono">provider</code> in the request, then the product's default
+					provider, then the first enabled one.
+				</li>
+				<li>
+					An explicit <code class="text-mono-id font-mono">provider</code> in a payment request bypasses
+					the options.
+				</li>
+			</ul>
+
+			<h3 class="text-label">Choosing on the Snap page</h3>
+			<p class="text-body text-muted-foreground">
+				The customer's Snap page lists the methods and checkouts the product offers. The page sends
+				one choice to <code class="text-mono-id font-mono">POST /snap/api/:token/pay</code>: a
+				method, or a provider's hosted checkout. A checkout answers with a
+				<code class="text-mono-id font-mono">redirect</code> instruction to the provider's page.
+			</p>
+			<CodeBlock code={snapPayBody} caption="Request body (one of the two)" />
 		</section>
 
 		<section id="status" class="flex scroll-mt-4 flex-col gap-3 rounded-lg border bg-card p-card">

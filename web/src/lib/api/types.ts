@@ -189,8 +189,30 @@ export interface Product {
 	slug: string;
 	webhook_url: string | null;
 	default_provider: Provider | null;
+	/** The checklist of payment options; empty means the product uses a single provider. */
+	payment_options: PaymentOption[];
 	api_keys: ApiKey[];
 	created_at: string;
+}
+/** A standard method code, or `checkout:<provider>` for that provider's hosted checkout page. */
+export type PaymentOptionKey = Method | `checkout:${Provider}`;
+/** One entry of a product's checklist: the option is served by exactly one provider. */
+export interface PaymentOption {
+	option: PaymentOptionKey;
+	provider: Provider;
+}
+/** A provider with an enabled account, with what it can serve. */
+export interface AvailableProvider {
+	provider: Provider;
+	label: string;
+	modes: Mode[];
+	methods: MethodInfo[];
+	checkout: boolean;
+}
+/** GET and PUT shape of `/admin/products/:id/payment-options`. */
+export interface PaymentOptions {
+	data: PaymentOption[];
+	available: AvailableProvider[];
 }
 
 export interface ProductCreated extends Product {
@@ -343,10 +365,17 @@ export interface SnapPayment {
 	return_url: string | null;
 }
 
+export interface SnapCheckout {
+	provider: Provider;
+	label: string;
+}
+/** Body of `POST /snap/api/:token/pay`: a standard method, or a provider's hosted checkout. */
+export type PayChoice = { method: Method } | { provider: Provider };
 export interface SnapState {
 	merchant_name: string;
 	payment: SnapPayment;
 	methods: SnapMethod[];
+	checkouts: SnapCheckout[];
 	allow_simulate: boolean;
 }
 

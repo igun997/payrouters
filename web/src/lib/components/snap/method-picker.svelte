@@ -1,20 +1,27 @@
 <script lang="ts">
-	/* Choose-method state: QRIS first, then bank transfer rows. The page owns the request; this only renders. */
+	/*
+	 * Choose-how-to-pay state: QRIS first, then bank transfer rows, then the provider's own checkout
+	 * pages. The page owns the request; this only renders.
+	 */
+	import CheckoutRow from './checkout-row.svelte';
 	import MethodRow from './method-row.svelte';
-	import type { Method, SnapMethod } from '#lib/api/types';
+	import { choiceKey } from './method-meta';
+	import type { Method, PayChoice, Provider, SnapCheckout, SnapMethod } from '#lib/api/types';
 
 	let {
 		methods,
+		checkouts,
 		connecting,
 		failed,
 		onpick
 	}: {
 		methods: SnapMethod[];
-		/** Method whose request is in flight. */
-		connecting: Method | null;
-		/** Last method the provider refused to start. */
-		failed: { method: Method } | null;
-		onpick: (code: Method) => void;
+		checkouts: SnapCheckout[];
+		/** Key of the choice whose request is in flight (see choiceKey). */
+		connecting: string | null;
+		/** Last choice the provider refused to start, by its key. */
+		failed: { key: string } | null;
+		onpick: (choice: PayChoice) => void;
 	} = $props();
 
 	const groups = $derived(
@@ -24,9 +31,9 @@
 		].filter((group) => group.items.length > 0)
 	);
 
-	function rowState(code: Method) {
-		if (connecting === code) return 'connecting' as const;
-		if (failed?.method === code) return 'error' as const;
+	function rowState(key: string) {
+		if (connecting === key) return 'connecting' as const;
+		if (failed?.key === key) return 'error' as const;
 		return 'idle' as const;
 	}
 </script>
@@ -35,7 +42,7 @@
 	<header class="flex flex-col gap-1">
 		<h1 class="text-page-title font-extrabold">Choose how to pay</h1>
 		<p class="text-body text-muted-foreground">
-			You will see the account or QR code on the next step
+			You will see the account, QR code or provider page on the next step
 		</p>
 	</header>
 
@@ -47,17 +54,37 @@
 					<li class="overflow-hidden rounded-lg border border-border bg-card">
 						<MethodRow
 							{method}
-							state={rowState(method.code)}
+							state={rowState(choiceKey({ method: method.code }))}
 							disabled={connecting !== null}
-							{onpick}
+							onpick={(code: Method) => onpick({ method: code })}
 						/>
 					</li>
 				{/each}
 			</ul>
 		</div>
-	{:else}
+	{/each}
+
+	{#if checkouts.length > 0}
+		<div class="flex flex-col gap-3 sm:gap-2" data-testid="snap-checkouts">
+			<h2 class="text-micro text-muted-foreground">Provider checkout</h2>
+			<ul class="flex flex-col gap-3 sm:gap-2">
+				{#each checkouts as checkout (checkout.provider)}
+					<li class="overflow-hidden rounded-lg border border-border bg-card">
+						<CheckoutRow
+							{checkout}
+							state={rowState(choiceKey({ provider: checkout.provider }))}
+							disabled={connecting !== null}
+							onpick={(provider: Provider) => onpick({ provider })}
+						/>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+
+	{#if groups.length === 0 && checkouts.length === 0}
 		<p class="py-4 text-center text-body text-muted-foreground">
 			No payment methods are available for this order right now.
 		</p>
-	{/each}
+	{/if}
 </section>

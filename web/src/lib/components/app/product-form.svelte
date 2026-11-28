@@ -67,7 +67,7 @@
 		id="{id}-provider"
 		label="Default provider"
 		optional
-		helper="Used when a payment request does not name a provider."
+		helper="Used when a payment request does not name a provider and the product has no payment options."
 	>
 		<SelectField
 			bind:value={values.defaultProvider}

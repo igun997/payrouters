@@ -921,6 +921,8 @@ async fn protocol_handshake_resources_and_prompts(pool: PgPool) {
         "generate_code",
         "create_product",
         "update_product",
+        "get_product_payment_options",
+        "set_product_payment_options",
         "rotate_webhook_secret",
         "create_api_key",
         "revoke_api_key",
@@ -959,7 +961,7 @@ async fn protocol_handshake_resources_and_prompts(pool: PgPool) {
             .as_array()
             .unwrap()
             .len(),
-        10
+        11
     );
     let read = app
         .rpc(
@@ -1042,6 +1044,10 @@ async fn a_read_only_connection_cannot_change_anything(pool: PgPool) {
             json!({ "product_id": product_id, "name": "k" }),
         ),
         (
+            "set_product_payment_options",
+            json!({ "product_id": product_id, "options": [] }),
+        ),
+        (
             "create_test_payment",
             json!({ "product_id": product_id, "amount": 10000 }),
         ),
@@ -1116,6 +1122,10 @@ async fn without_the_live_permission_everything_stays_in_sandbox(pool: PgPool) {
             json!({ "product_id": product_id, "webhook_url": "https://evil.test/hook" }),
         ),
         ("rotate_webhook_secret", json!({ "product_id": product_id })),
+        (
+            "set_product_payment_options",
+            json!({ "product_id": product_id, "options": [] }),
+        ),
     ] {
         let r = app.tool(&c.access, name, args).await;
         assert_eq!(r["isError"], true, "{name}");
@@ -1902,4 +1912,214 @@ async fn the_application_checkout_can_be_waited_for_simulated_and_confirmed(pool
         )
         .await;
     assert_eq!(live["isError"], true);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_assistant_can_choose_a_products_payment_options_and_payments_follow_them(pool: PgPool) {
+    let app = App::new(pool).await;
+    let (product_id, sandbox_key) = app.product_with_keys("Shop", None).await;
+    // the helper product has a live key, so changing it needs the live permission
+    let c = app.connect("read write live").await;
+
+    // nothing set: one provider, and the tool says what could be chosen
+    let r = app
+        .tool(
+            &c.access,
+            "get_product_payment_options",
+            json!({ "product_id": product_id }),
+        )
+        .await;
+    assert_eq!(r["isError"], false, "{}", text_of(&r));
+    assert_eq!(r["structuredContent"]["data"], json!([]));
+    let mock = r["structuredContent"]["available"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["provider"] == "mock")
+        .expect("the simulator is always available in sandbox");
+    assert!(mock["methods"].as_array().unwrap().len() >= 5);
+    assert_eq!(mock["checkout"], false);
+    assert!(text_of(&r).contains("one provider"), "{}", text_of(&r));
+
+    // bad lists are refused with the reason
+    for (options, needle) in [
+        (
+            json!([{ "option": "qris", "provider": "paypal" }]),
+            "does not support",
+        ),
+        (
+            json!([{ "option": "qris", "provider": "mock" }, { "option": "qris", "provider": "midtrans" }]),
+            "listed twice",
+        ),
+        (
+            json!([{ "option": "checkout:mock", "provider": "mock" }]),
+            "no provider-hosted checkout",
+        ),
+        (
+            json!([{ "option": "bitcoin", "provider": "mock" }]),
+            "unknown payment option",
+        ),
+    ] {
+        let r = app
+            .tool(
+                &c.access,
+                "set_product_payment_options",
+                json!({ "product_id": product_id, "options": options }),
+            )
+            .await;
+        assert_eq!(r["isError"], true, "{needle}");
+        assert!(text_of(&r).contains(needle), "{needle}: {}", text_of(&r));
+    }
+
+    // a valid list is saved and shows up on the product
+    let r = app
+        .tool(
+            &c.access,
+            "set_product_payment_options",
+            json!({
+                "product_id": product_id,
+                "options": [
+                    { "option": "qris", "provider": "mock" },
+                    { "option": "va_bca", "provider": "mock" }
+                ]
+            }),
+        )
+        .await;
+    assert_eq!(r["isError"], false, "{}", text_of(&r));
+    assert_eq!(
+        r["structuredContent"]["data"],
+        json!([
+            { "option": "qris", "provider": "mock" },
+            { "option": "va_bca", "provider": "mock" }
+        ])
+    );
+    let listed = app.tool(&c.access, "list_products", json!({})).await;
+    assert_eq!(
+        listed["structuredContent"]["data"][0]["payment_options"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    // payments follow the options when the request names no provider
+    let ok = app
+        .tool(
+            &c.access,
+            "create_test_payment",
+            json!({ "product_id": product_id, "amount": 50000, "method": "qris" }),
+        )
+        .await;
+    assert_eq!(ok["isError"], false, "{}", text_of(&ok));
+    assert_eq!(ok["structuredContent"]["provider"], "mock");
+    assert_eq!(ok["structuredContent"]["instructions"]["type"], "qris");
+    let refused = app
+        .tool(
+            &c.access,
+            "create_test_payment",
+            json!({ "product_id": product_id, "amount": 50000, "method": "va_bni" }),
+        )
+        .await;
+    assert_eq!(refused["isError"], true);
+    assert!(
+        text_of(&refused).contains("method_not_enabled"),
+        "{}",
+        text_of(&refused)
+    );
+
+    // the Snap page offers exactly the product's methods
+    let pending = app
+        .tool(
+            &c.access,
+            "create_test_payment",
+            json!({ "product_id": product_id, "amount": 50000 }),
+        )
+        .await;
+    let snap_url = pending["structuredContent"]["snap_url"].as_str().unwrap();
+    let token = snap_url.rsplit('/').next().unwrap();
+    let view = app
+        .call("GET", &format!("/snap/api/{token}"), None, None)
+        .await;
+    let offered: Vec<&str> = view.json["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(offered, ["qris", "va_bca"]);
+    assert_eq!(view.json["checkouts"], json!([]));
+    // and a method outside them is refused on the page too
+    let pay = app
+        .call(
+            "POST",
+            &format!("/snap/api/{token}/pay"),
+            None,
+            Some(json!({ "method": "va_bni" })),
+        )
+        .await;
+    assert_eq!(
+        pay.json["error"]["code"], "method_unsupported",
+        "{}",
+        pay.text
+    );
+    let both = app
+        .call(
+            "POST",
+            &format!("/snap/api/{token}/pay"),
+            None,
+            Some(json!({ "method": "qris", "provider": "mock" })),
+        )
+        .await;
+    assert_eq!(both.status, StatusCode::BAD_REQUEST, "{}", both.text);
+    let chosen = app
+        .call(
+            "POST",
+            &format!("/snap/api/{token}/pay"),
+            None,
+            Some(json!({ "method": "va_bca" })),
+        )
+        .await;
+    assert_eq!(
+        chosen.json["payment"]["provider"], "mock",
+        "{}",
+        chosen.text
+    );
+    assert_eq!(
+        chosen.json["payment"]["instructions"]["type"],
+        "virtual_account"
+    );
+
+    // an explicit provider bypasses the options, and `GET /v1/methods` shows the product's own list
+    let methods = app
+        .call("GET", "/v1/methods", Some(&sandbox_key), None)
+        .await;
+    let providers = methods.json["data"].as_array().unwrap();
+    assert_eq!(providers.len(), 1, "{}", methods.text);
+    let codes: Vec<&str> = providers[0]["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["qris", "va_bca"]);
+    let bypass = app
+        .call(
+            "POST",
+            "/v1/payments",
+            Some(&sandbox_key),
+            Some(json!({ "order_id": "B-1", "amount": 10000, "provider": "mock", "method": "va_bni" })),
+        )
+        .await;
+    assert_eq!(bypass.status, StatusCode::CREATED, "{}", bypass.text);
+
+    // clearing returns to one provider
+    let cleared = app
+        .tool(
+            &c.access,
+            "set_product_payment_options",
+            json!({ "product_id": product_id, "options": [] }),
+        )
+        .await;
+    assert_eq!(cleared["isError"], false);
+    assert_eq!(cleared["structuredContent"]["data"], json!([]));
 }

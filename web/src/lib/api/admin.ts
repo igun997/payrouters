@@ -14,6 +14,8 @@ import type {
 	OAuthRedirect,
 	Page,
 	PaymentDetail,
+	PaymentOption,
+	PaymentOptions,
 	Product,
 	ProductCreated,
 	ProviderAccount,
@@ -99,6 +101,14 @@ export const adminApi = {
 		request<ApiKeyCreated>(`/admin/products/${id}/api-keys`, { method: 'POST', body }),
 	revokeApiKey: (productId: string, keyId: string) =>
 		requestVoid(`/admin/products/${productId}/api-keys/${keyId}`, { method: 'DELETE' }),
+	getPaymentOptions: (id: string) =>
+		request<PaymentOptions>(`/admin/products/${id}/payment-options`),
+	/** Replaces the whole checklist; an empty list clears it. Returns the saved state. */
+	setPaymentOptions: (id: string, options: PaymentOption[]) =>
+		request<PaymentOptions>(`/admin/products/${id}/payment-options`, {
+			method: 'PUT',
+			body: { options }
+		}),
 
 	// Provider accounts
 	listProviders: () => request<{ data: ProviderAccount[] }>('/admin/providers'),

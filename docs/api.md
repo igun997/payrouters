@@ -21,7 +21,7 @@ The SPA is served by the same binary from `WEB_DIR` (SvelteKit `adapter-static`,
   ```json
   { "error": { "code": "invalid_request", "message": "human text", "details": null } }
   ```
-  Codes: `invalid_request` 400, `unauthorized` 401, `not_found` 404, `conflict` 409 (`order_id_conflict`, `method_already_selected`, …use `code` literally), `unprocessable` 422 (`provider_unavailable`, `method_unsupported`, `sandbox_unsupported`), `rate_limited` 429 (with `Retry-After` seconds; failed-auth lockout on `/admin`, `/v1`, `/mcp` and `/oauth/token`, per-IP request limits on `/snap/api`, `/hooks` and `/oauth/*`, tunable by `RATE_*` env), `provider_error` 502, `internal` 500.
+  Codes: `invalid_request` 400, `unauthorized` 401, `not_found` 404, `conflict` 409 (`order_id_conflict`, `method_already_selected`, …use `code` literally), `unprocessable` 422 (`provider_unavailable`, `method_unsupported`, `method_not_enabled`, `checkout_unsupported`, `channel_not_activated`, `sandbox_unsupported`), `rate_limited` 429 (with `Retry-After` seconds; failed-auth lockout on `/admin`, `/v1`, `/mcp` and `/oauth/token`, per-IP request limits on `/snap/api`, `/hooks` and `/oauth/*`, tunable by `RATE_*` env), `provider_error` 502, `internal` 500. A reverse proxy may replace a 5xx body with its own page (Easypanel does for 502): the server logs every failed provider charge with the provider's message (`provider charge failed`), so read the log when `provider_error` shows up as HTML.
 - Pagination (lists): `?limit=` (default 50, max 200) & `?cursor=`; response `{ "data": [...], "next_cursor": "opaque"|null }`.
 - Date filters: `from` / `to` are `YYYY-MM-DD` in the server's stats timezone (default `Asia/Jakarta`), inclusive.
 
@@ -123,7 +123,7 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
 ```json
 { "data": [ { "provider": "midtrans", "checkout_provider": true, "methods": [ { "code": "va_bca", "label": "BCA Virtual Account", "group": "virtual_account" } ] } ] }
 ```
-(`group`: `virtual_account | qris`.) Only providers that have an enabled account in the key's mode.
+(`group`: `virtual_account | qris`.) Only providers that have an enabled account in the key's mode. For a product with **payment options** (see below) the catalog is the product's own options grouped by provider: `methods` are the standard methods that provider serves for the product and `checkout_provider` tells whether the product offers that provider's hosted checkout (PayPal and Mayar: `methods` is empty, `checkout_provider` true).
 
 ---
 
@@ -137,15 +137,47 @@ Headers: `PayRouters-Signature: t=<unix_seconds>,v1=<hex>`, `PayRouters-Event-Id
   "merchant_name": "My Product",
   "payment": { "id": "…", "order_id": "…", "status": "pending", "livemode": false, "amount": 150000, "payable_amount": null, "currency": "IDR", "provider": "midtrans", "method": null, "description": null, "items": [], "instructions": null, "expires_at": "…", "paid_at": null, "return_url": null },
   "methods": [ { "code": "va_bca", "label": "BCA Virtual Account", "group": "virtual_account" }, { "code": "qris", "label": "QRIS", "group": "qris" } ],
+  "checkouts": [ { "provider": "paypal", "label": "PayPal" } ],
   "allow_simulate": false
 }
 ```
-`methods` = what the payment's provider supports in core mode (empty once `instructions` exist or status ≠ pending). `allow_simulate` is true only for the `mock` provider while pending. The page polls this endpoint (every 3 s) until `status` ≠ `pending`, then redirects to `return_url` if present.
+`methods` = what the customer can pick: the payment's provider in core mode, or, for a payment created from the product's payment options, the product's methods; `checkouts` = the product's hosted checkouts the customer can pick (always empty without payment options). Both are empty once `instructions` exist or status ≠ pending. A method a provider account has been seen to refuse as not activated is left out while anything else remains. `allow_simulate` is true only for the `mock` provider while pending. The page polls this endpoint (every 3 s) until `status` ≠ `pending`, then redirects to `return_url` if present.
 
-### `POST /snap/api/:token/pay` body `{ "method": "va_bca" }` → same shape as GET
-`409 method_already_selected` if instructions exist; `422 method_unsupported`; `409 conflict` if not pending/expired.
+### `POST /snap/api/:token/pay` body `{ "method": "va_bca" }` or `{ "provider": "paypal" }` → same shape as GET
+Exactly one of `method` (a standard method) or `provider` (that provider's hosted checkout; the answer has `instructions.type = "redirect"`), else `400`. `409 method_already_selected` if instructions exist or a choice is in flight; `422 method_unsupported` / `422 checkout_unsupported` (the payment, or its product's options, do not offer it); `409 conflict` if not pending/expired. For a payment created from payment options the payment moves to the provider that serves the choice when the charge is created. A method the provider reports as not activated is served from its hosted checkout instead (`method` stays `null`).
+
+### `GET /snap/api/:token/return`, `GET /snap/api/:token/cancel`
+Where PayPal sends the payer back (set by the adapter as `return_url` / `cancel_url`, not meant to be called by products). `return` settles a pending payment with the provider (PayPal: captures an approved order) and answers `303` to the Snap page; `cancel` answers `303` to the Snap page with `?paused=1`, which stops the page's automatic hop to the provider. Unknown token: `404`.
 
 ### `POST /snap/api/:token/simulate` body `{ "outcome": "paid" }` → same shape (mock provider only, else `422`)
+
+---
+
+## Payment options (one product, several providers)
+
+A product can offer a checklist of payment options, each served by one provider chosen for it: for example QRIS on Midtrans, virtual accounts on Xendit and PayPal for overseas customers. An option is a standard method code (`qris`, `va_bca`, `va_bni`, `va_bri`, `va_mandiri`, `va_permata`) or `checkout:<provider>` for that provider's hosted checkout page (`checkout:paypal`, `checkout:mayar`, `checkout:midtrans`, ...). PayPal and Mayar have no standard methods, so their only option is the checkout.
+
+- A method is served by **one** provider per product (a duplicate is `400`); several hosted checkouts may be enabled. Each option must be something its provider supports. The list order is kept.
+- A product **without** options keeps the single-provider behaviour: the request's `provider`, then the product's `default_provider`, then the first enabled provider.
+- Options are per product, not per mode. A mode uses the options whose provider has an **enabled account in that mode**; sandbox falls back to the single-provider behaviour (the mock simulator) when none does; live answers `422 provider_unavailable`.
+
+How `POST /v1/payments` is served when the request has no `provider`:
+
+| Request | Result |
+|---|---|
+| `method: "qris"` | Charged at once on the provider chosen for `qris`. Not among the options: `422 method_not_enabled`. |
+| `checkout: "snap"`, no `method` | The customer picks on the Snap page (`methods` plus `checkouts`); each pick is charged on its own provider. A product whose only option is one hosted checkout goes straight to it. The payment is created on the first option's provider and moves to the provider that takes the charge, so `provider` can change until then (the payment keeps `checkout: "snap"`). |
+| `checkout: "provider"` | The product's first enabled hosted checkout; none: `422 checkout_unsupported`. |
+| `provider: "xendit"` | Bypasses the options: the single-provider behaviour for that provider. |
+
+Idempotent replay of a payment created from options does not compare the provider.
+
+Admin API (bearer `ADMIN_TOKEN`):
+- `GET /admin/products/:id/payment-options` → `{ "data": [ { "option": "qris", "provider": "midtrans" } ], "available": [ { "provider": "paypal", "label": "PayPal", "modes": ["sandbox"], "methods": [], "checkout": true } ] }`. `data` is the selection in order (`[]`: not configured); `available` lists every provider with an enabled account, the modes it has one in, the standard methods it supports and whether it has a hosted checkout.
+- `PUT /admin/products/:id/payment-options` `{ "options": [ { "option": "qris", "provider": "midtrans" }, { "option": "checkout:paypal", "provider": "paypal" } ] }` replaces the selection (`[]` clears it) and answers like `GET`. `400` for an unknown option, an option its provider cannot serve, a repeated option or more than 40; `404` unknown product.
+- Products carry the selection as `payment_options`. The MCP tools are `get_product_payment_options` and `set_product_payment_options` (topic `payment-options`).
+
+Channels the provider has not activated are handled on top of this: see the note under `POST /v1/payments`.
 
 ---
 
@@ -179,12 +211,14 @@ Mayar documents no signature: a `payment.received` webhook only names the paymen
 Product:
 ```json
 { "id": "…", "name": "My App", "slug": "my-app", "webhook_url": "https://…|null", "default_provider": "midtrans|null",
+  "payment_options": [ { "option": "qris", "provider": "midtrans" } ],
   "api_keys": [ { "id": "…", "mode": "sandbox", "name": "backend", "prefix": "prk_test_ab12", "created_at": "…", "last_used_at": "…|null", "revoked_at": "…|null" } ],
   "created_at": "…" }
 ```
 - `GET /admin/products` → `{data:[Product]}` (archived hidden)
 - `POST /admin/products` `{name, webhook_url?, default_provider?}` → `201 {…Product, "webhook_secret": "whsec_…"}` (secret shown only here and on rotate)
 - `PATCH /admin/products/:id` `{name?, webhook_url?, default_provider?}` (`null` clears) → Product
+- `GET|PUT /admin/products/:id/payment-options` → see **Payment options**
 - `DELETE /admin/products/:id` → `204` (archives, revokes keys)
 - `POST /admin/products/:id/webhook-secret/rotate` → `{ "webhook_secret": "whsec_…" }`
 - `POST /admin/products/:id/api-keys` `{mode, name}` → `201 { …key meta, "key": "prk_test_<full secret>" }` (full key shown once)
@@ -201,6 +235,18 @@ ProviderAccount:
   "created_at": "…" }
 ```
 `credentials`: secret fields masked (`••••` + last 4, or `""` if unset), non-secret fields plain. `fees`: optional per-method fee schedule used when the provider does not report a fee (`fixed` rupiah + `percent` e.g. `0.7`); key `"*"` = default.
+
+Credential keys per provider (`GET /admin/meta` lists them with labels, required flags and which are secret):
+
+| Provider | Required | Optional |
+|---|---|---|
+| `midtrans` | `server_key` | `signature_secret_key` (webhook signatures) |
+| `xendit` | `secret_key`, `callback_token` | |
+| `idrx` | `api_key`, `api_secret` | `default_wallet_address`, `default_chain_id` |
+| `mayar` | `api_key` | `webhook_token` |
+| `paypal` | `client_id`, `client_secret` | `idr_rate` (fixed rupiah per unit; blank = ECB reference rate), `currency` (default `USD`), `webhook_id` |
+| `mock` | none | |
+
 - `GET /admin/providers` → `{data:[ProviderAccount]}`
 - `POST /admin/providers` `{provider, mode, label?, credentials:{…}, fees?}` → `201`. Duplicate (provider,mode) → `409`; IDRX sandbox → `422 sandbox_unsupported`; missing required credential → `400`.
 - `PATCH /admin/providers/:id` `{label?, enabled?, credentials?, fees?}` — credentials are merged per key; a value equal to its masked form or omitted keeps the stored one. → ProviderAccount

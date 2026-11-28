@@ -9,12 +9,13 @@
 	import { toast } from 'svelte-sonner';
 	import { snapApi } from '#lib/api/snap';
 	import { ApiError, errorMessage } from '#lib/api/client';
-	import type { Method, SimulateOutcome, SnapState } from '#lib/api/types';
+	import type { PayChoice, SimulateOutcome, SnapState } from '#lib/api/types';
 	import { Button } from '#lib/components/ui/button';
 	import { Skeleton } from '#lib/components/ui/skeleton';
 	import AmountBlock from '#lib/components/snap/amount-block.svelte';
 	import InstructionsView from '#lib/components/snap/instructions-view.svelte';
 	import MethodPicker from '#lib/components/snap/method-picker.svelte';
+	import { choiceKey } from '#lib/components/snap/method-meta';
 	import OrderMeta from '#lib/components/snap/order-meta.svelte';
 	import PayBefore from '#lib/components/snap/pay-before.svelte';
 	import PaymentResult from '#lib/components/snap/payment-result.svelte';
@@ -31,8 +32,9 @@
 	let notFound = $state(false);
 	let loadError = $state<string | null>(null);
 	let visible = $state(true);
-	let connecting = $state<Method | null>(null);
-	let failed = $state<{ method: Method; message: string } | null>(null);
+	// Key of the choice whose request is in flight or refused (see choiceKey).
+	let connecting = $state<string | null>(null);
+	let failed = $state<{ key: string; message: string } | null>(null);
 	let simulating = $state(false);
 	// Every request takes a number; a response is applied only if no newer request started after it.
 	// That keeps a slow poll from overwriting the result of a pay or simulate call.
@@ -92,17 +94,18 @@
 		return () => document.removeEventListener('visibilitychange', onVisibilityChange);
 	});
 
-	async function pay(method: Method) {
+	async function pay(choice: PayChoice) {
 		if (connecting) return;
-		connecting = method;
+		const key = choiceKey(choice);
+		connecting = key;
 		failed = null;
 		const seq = ++latest;
 		try {
-			const next = await snapApi.pay(token, method);
+			const next = await snapApi.pay(token, choice);
 			if (seq === latest) snap = next;
 		} catch (error) {
 			const message = errorMessage(error);
-			failed = { method, message };
+			failed = { key, message };
 			toast.error(message);
 			// Another tab may already have chosen a method (409): show what the server holds now.
 			await load(token, true);
@@ -194,7 +197,13 @@
 				{/snippet}
 			</AmountBlock>
 			<OrderMeta orderId={payment.order_id} description={payment.description} />
-			<MethodPicker methods={snap.methods} {connecting} {failed} onpick={pay} />
+			<MethodPicker
+				methods={snap.methods}
+				checkouts={snap.checkouts}
+				{connecting}
+				{failed}
+				onpick={pay}
+			/>
 		{:else}
 			<PaymentResult {payment} merchantName={merchant ?? ''} />
 		{/if}

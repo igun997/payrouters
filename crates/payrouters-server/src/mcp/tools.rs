@@ -23,6 +23,7 @@ use crate::api::admin::{providers_admin, stats};
 use crate::error::{ApiJson, ApiQuery, AppError};
 use crate::models::DeliveryRow;
 use crate::providers;
+use crate::services::options::{self, OptionInput};
 use crate::services::{accounts, outbound};
 use crate::util::random_hex;
 
@@ -313,6 +314,46 @@ const DEFS: &[Def] = &[
         idempotent: true,
     },
     Def {
+        name: "get_product_payment_options",
+        title: "A product's payment options",
+        description: "The payment options a product offers, each served by one provider (QRIS on Midtrans, virtual accounts on Xendit, PayPal for overseas customers, ...), plus what could be chosen: every provider with an enabled account, the standard methods it supports and whether it has a hosted checkout. An option is a standard method code (qris, va_bca, va_bni, va_bri, va_mandiri, va_permata) or checkout:<provider> for that provider's hosted page. Empty data means the product is not configured and uses one provider (the request's provider, its default_provider, then the first enabled one). Read-only.",
+        schema: || {
+            object(
+                json!({ "product_id": id_prop("The product.") }),
+                &["product_id"],
+            )
+        },
+        need: Need::Read,
+        idempotent: true,
+    },
+    Def {
+        name: "set_product_payment_options",
+        title: "Choose a product's payment options",
+        description: "Replaces the product's payment options (the checklist of what its customers can pay with and which provider serves each). Example: [{option:\"qris\",provider:\"midtrans\"},{option:\"va_bca\",provider:\"xendit\"},{option:\"checkout:paypal\",provider:\"paypal\"}]. A method is served by exactly one provider; several hosted checkouts may be enabled. PayPal and Mayar have no standard methods, only checkout:paypal and checkout:mayar. With options set, a payment created without a provider goes to the provider chosen for its method, and the Snap page lists the product's methods plus its hosted checkouts; an explicit provider in the request bypasses them. A mode uses the options whose provider has an enabled account in it; sandbox falls back to the mock simulator when none do. Send an empty list to clear (back to one provider). Use get_product_payment_options first to see the valid providers and methods. A product that already has live API keys can only be changed with the live permission.",
+        schema: || {
+            object(
+                json!({
+                    "product_id": id_prop("The product."),
+                    "options": {
+                        "type": "array",
+                        "maxItems": 40,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "option": { "type": "string", "description": "A method code (qris, va_bca, va_bni, va_bri, va_mandiri, va_permata) or checkout:<provider>." },
+                                "provider": { "type": "string", "enum": ["midtrans", "xendit", "idrx", "mayar", "paypal", "mock"] }
+                            },
+                            "required": ["option", "provider"]
+                        }
+                    }
+                }),
+                &["product_id", "options"],
+            )
+        },
+        need: Need::Write,
+        idempotent: true,
+    },
+    Def {
         name: "rotate_webhook_secret",
         title: "Rotate a product's webhook secret",
         description: "Issues a new whsec_... secret (shown once) and invalidates the old one at once, for sandbox and live traffic alike: the product's backend must be updated before the next delivery. A product that already has live API keys needs the live permission.",
@@ -358,7 +399,7 @@ const DEFS: &[Def] = &[
     Def {
         name: "create_test_payment",
         title: "Create a payment",
-        description: "Creates a payment for a product, like the dashboard Playground (no API key needed). In sandbox use provider mock with a method (for example va_bca) to get instructions you can mark paid with simulate_payment. order_id is generated when omitted. Returns the payment and its snap_url. Live mode creates a real payment and needs the live permission.",
+        description: "Creates a payment for a product, like the dashboard Playground (no API key needed). In sandbox use provider mock with a method (for example va_bca) to get instructions you can mark paid with simulate_payment. A product with payment options (see get_product_payment_options) serves a payment from them when provider is omitted: a method goes to the provider chosen for it, otherwise the customer picks on the Snap page; an explicit provider bypasses the options. order_id is generated when omitted. Returns the payment and its snap_url. Live mode creates a real payment and needs the live permission.",
         schema: || {
             object(
                 json!({
@@ -540,6 +581,8 @@ async fn dispatch(ctx: &Ctx, name: &str, args: Value) -> TResult {
         "generate_code" => generate_code(ctx, &args),
         "create_product" => create_product(ctx, args).await,
         "update_product" => update_product(ctx, args).await,
+        "get_product_payment_options" => get_product_options(ctx, &args).await,
+        "set_product_payment_options" => set_product_options(ctx, args).await,
         "rotate_webhook_secret" => rotate_secret(ctx, &args).await,
         "create_api_key" => create_api_key(ctx, &args).await,
         "revoke_api_key" => revoke_api_key(ctx, &args).await,
@@ -706,9 +749,33 @@ async fn integration_status(ctx: &Ctx) -> TResult {
         if sandbox_keys == 0 {
             steps.push(format!("Product \"{name}\" has no active sandbox API key: call create_api_key (mode sandbox)."));
         }
+        let several_providers = accounts
+            .iter()
+            .filter(|a| {
+                a.get("enabled").and_then(Value::as_bool) == Some(true)
+                    && a.get("provider").and_then(Value::as_str) != Some("mock")
+            })
+            .filter_map(|a| a.get("provider").and_then(Value::as_str))
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            > 1;
+        let configured = p
+            .get("payment_options")
+            .and_then(Value::as_array)
+            .is_some_and(|o| !o.is_empty());
+        if several_providers && !configured {
+            steps.push(format!("Product \"{name}\" can use several providers but has no payment options: use get_product_payment_options and set_product_payment_options to choose which methods it offers and which provider serves each (for example QRIS on Midtrans, virtual accounts on Xendit, PayPal for overseas customers)."));
+        }
         let mut row = pick(
             &p,
-            &["id", "name", "slug", "webhook_url", "default_provider"],
+            &[
+                "id",
+                "name",
+                "slug",
+                "webhook_url",
+                "default_provider",
+                "payment_options",
+            ],
         );
         row["active_keys"] = if live {
             json!({ "sandbox": sandbox_keys, "live": live_keys })
@@ -1145,6 +1212,38 @@ async fn update_product(ctx: &Ctx, args: Value) -> TResult {
     let mut v = to_value(&v)?;
     scrub_product(ctx, &mut v);
     out("Product updated.", v)
+}
+
+fn options_summary(v: &options::OptionsView) -> String {
+    if v.data.is_empty() {
+        return "No payment options: the product uses one provider (the request's provider, its default_provider, then the first enabled one).".into();
+    }
+    let list: Vec<String> = v
+        .data
+        .iter()
+        .map(|o| format!("{} ({})", o.option, o.provider.label()))
+        .collect();
+    format!("{} payment option(s): {}.", list.len(), list.join(", "))
+}
+
+async fn get_product_options(ctx: &Ctx, args: &Value) -> TResult {
+    let id = uuid_arg(args, "product_id")?;
+    let v = options::view(&ctx.state, id).await?;
+    out(options_summary(&v), to_value(&v)?)
+}
+
+async fn set_product_options(ctx: &Ctx, args: Value) -> TResult {
+    let id = uuid_arg(&args, "product_id")?;
+    let inputs: Vec<OptionInput> = parse(args.get("options").cloned().unwrap_or(Value::Null))?;
+    ensure_product_writable(ctx, id).await?;
+    let v = options::set(&ctx.state, id, &inputs).await?;
+    out(
+        format!(
+            "Saved. {} Test it in sandbox with create_test_payment (omit provider so the options decide).",
+            options_summary(&v)
+        ),
+        to_value(&v)?,
+    )
 }
 
 async fn rotate_secret(ctx: &Ctx, args: &Value) -> TResult {

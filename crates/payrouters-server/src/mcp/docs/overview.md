@@ -15,6 +15,8 @@ PayRouters is one API in front of Midtrans, Xendit, IDRX, Mayar and PayPal for *
 4. Your webhook endpoint verifies `PayRouters-Signature` with the webhook secret and marks the order paid on `payment.paid` (see `webhooks`).
 5. Test with the `mock` provider: `run_integration_selftest` checks the webhook endpoint in one call; for the checkout run the application, `wait_for_payment`, then `simulate_payment` (topic `testing`).
 
+One product can combine providers (QRIS on Midtrans, virtual accounts on Xendit, PayPal for overseas customers): give it **payment options** with `set_product_payment_options` and leave `provider` out of the payment request (topic `payment-options`).
+
 Environment variables for the product's backend:
 
 ```

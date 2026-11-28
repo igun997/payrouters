@@ -12,7 +12,7 @@ pub struct Topic {
     body: &'static str,
 }
 
-pub const TOPICS: [Topic; 10] = [
+pub const TOPICS: [Topic; 11] = [
     Topic {
         id: "overview",
         title: "PayRouters overview",
@@ -72,6 +72,12 @@ pub const TOPICS: [Topic; 10] = [
         title: "Provider accounts",
         summary: "Midtrans, Xendit, IDRX, Mayar and PayPal credentials and where to paste the webhook URL",
         body: include_str!("docs/providers.md"),
+    },
+    Topic {
+        id: "payment-options",
+        title: "Payment options",
+        summary: "One product with several providers: the checklist of methods and hosted checkouts, how payments are routed, and how to set it",
+        body: include_str!("docs/payment-options.md"),
     },
 ];
 
@@ -423,7 +429,7 @@ pub fn integrate_prompt(language: Option<&str>, framework: Option<&str>) -> Stri
     format!(
         "I want to accept payments with PayRouters in my application{stack}. Use the PayRouters MCP tools instead of guessing any value:\n\
 1. Call get_integration_status and follow its next_steps. Ask me for anything only I know (the product name, the public URL of my webhook endpoint).\n\
-2. If there is no product yet, call create_product with my webhook URL. Create a sandbox key with create_api_key. Tell me to store PAYROUTERS_API_KEY and PAYROUTERS_WEBHOOK_SECRET in my backend's environment (use get_env_template for the exact variable block), never in source code.\n\
+2. If there is no product yet, call create_product with my webhook URL. Create a sandbox key with create_api_key. Tell me to store PAYROUTERS_API_KEY and PAYROUTERS_WEBHOOK_SECRET in my backend's environment (use get_env_template for the exact variable block), never in source code. If I want one product to offer several providers (for example QRIS on one, virtual accounts on another, PayPal for overseas customers), ask me which method goes to which provider, then use get_product_payment_options and set_product_payment_options (docs topic payment-options) and leave provider out of the payment request.\n\
 3. Read get_docs topics create-payment and webhooks, then look at my project and write the integration code with generate_code as the reference: create a payment when an order is placed, redirect the customer to snap_url, and a webhook endpoint that verifies the signature on the raw body and marks the order paid on payment.paid (idempotent on PayRouters-Event-Id).\n\
 4. Prove it in sandbox: run create_test_payment and simulate_payment, then test_webhook_integration against my endpoint, and fix whatever it reports.\n\
 5. Finish with a short list of what I must do before going live."
@@ -453,8 +459,8 @@ pub fn debug_prompt(payment_id: Option<&str>, order_id: Option<&str>) -> String 
         (None, None) => "my payment (ask me for the payment id or order id)".to_string(),
     };
     format!(
-        "Help me find out what is wrong with {which}. Call get_payment first (it returns the status, the provider events and the webhook deliveries), then explain: is it still pending and why (provider, method, expires_at), did the provider notify PayRouters (list_inbound_webhook_events), and did my product's webhook endpoint receive the result (list_webhook_deliveries: status, attempts, last status code and error). If a webhook failed, say what the response means and use retry_webhook_delivery after the endpoint is fixed. If the status looks stale, call sync_payment."
+        "Help me find out what is wrong with {which}. Call get_payment first (it returns the status, the provider events and the webhook deliveries), then explain: is it still pending and why (provider, method, expires_at), did the provider notify PayRouters (list_inbound_webhook_events), and did my product's webhook endpoint receive the result (list_webhook_deliveries: status, attempts, last status code and error). If a webhook failed, say what the response means and use retry_webhook_delivery after the endpoint is fixed. If the status looks stale, call sync_payment. Remember that for a product with payment options the provider is the one that took the charge, and that a payment sent to a provider's hosted page (instructions type redirect, method null) although a method was asked for means the provider reported that channel as not activated (docs topic checkout-and-methods)."
     )
 }
 
-pub const GO_LIVE_PROMPT: &str = "Walk me through going live with PayRouters. Call get_integration_status and check, for the product I name: a live provider account is enabled (list_provider_accounts), a live API key exists (create_api_key with mode live needs the live permission, tell me if it is missing), the webhook_url is an https URL on my production backend, and the webhook secret in my production environment is the product's current one. Then list what I should test with a real small payment, and what to watch afterwards (list_payments, list_webhook_deliveries, get_stats_summary for mode live).";
+pub const GO_LIVE_PROMPT: &str = "Walk me through going live with PayRouters. Call get_integration_status and check, for the product I name: a live provider account is enabled (list_provider_accounts), a live API key exists (create_api_key with mode live needs the live permission, tell me if it is missing), the webhook_url is an https URL on my production backend, and the webhook secret in my production environment is the product's current one. If the product has payment options (get_product_payment_options), every provider they use must have an enabled live account, otherwise those options are skipped in live; remind me of the provider-side setup: Midtrans Core API activated (otherwise payments fall back to Midtrans Snap), PayPal webhook_id and a current idr_rate or the ECB rate, Mayar webhook token, Xendit callback token. Then list what I should test with a real small payment, and what to watch afterwards (list_payments, list_webhook_deliveries, get_stats_summary for mode live).";

@@ -47,6 +47,8 @@ pub struct PaymentRow {
     pub last_synced_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Created from the product's payment options: the provider is settled when the customer picks.
+    pub routed: bool,
     /// Only present on admin queries that join `products`.
     #[sqlx(default)]
     pub product_name: Option<String>,

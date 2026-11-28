@@ -10,6 +10,7 @@ use sqlx::types::Json;
 use uuid::Uuid;
 
 use super::accounts::{self, AccountRecord};
+use super::options;
 use super::outbound;
 use crate::error::{AppError, Result, is_unique_violation};
 use crate::models::PaymentRow;
@@ -243,7 +244,26 @@ pub async fn create(
 ) -> Result<(PaymentRow, bool)> {
     let v = validate(&req)?;
     let order_id = req.order_id.trim().to_string();
-    let account = resolve_account(state, mode, req.provider, product.default_provider).await?;
+    // A product with payment options serves each method from the provider it chose for it; an
+    // explicit `provider` in the request, or a product without options, keeps the old behaviour.
+    let routing = options::route(
+        state,
+        product.id,
+        mode,
+        req.provider,
+        req.method,
+        v.checkout,
+    )
+    .await?;
+    let account = match routing {
+        Some(r) => accounts::find_enabled(state, mode, r.provider)
+            .await?
+            .ok_or_else(|| {
+                AppError::unprocessable("provider_unavailable", "provider account disappeared")
+            })?,
+        None => resolve_account(state, mode, req.provider, product.default_provider).await?,
+    };
+    let routed = routing.is_some();
     let adapter = providers::adapter(account.provider);
     let info = adapter.info();
 
@@ -297,16 +317,20 @@ pub async fn create(
         provider_options: &provider_options,
         method: req.method,
     };
-    adapter
-        .validate(&account.creds, &input, v.checkout == Checkout::Provider)
-        .map_err(AppError::BadRequest)?;
+    // A payment whose provider the customer still has to choose is checked when they choose.
+    let provider_pending = routed && req.method.is_none() && !routing.is_some_and(|r| r.hosted_now);
+    if !provider_pending {
+        adapter
+            .validate(&account.creds, &input, v.checkout == Checkout::Provider)
+            .map_err(AppError::BadRequest)?;
+    }
 
     let inserted = sqlx::query_as::<_, PaymentRow>(
         "INSERT INTO payments
            (id, product_id, provider_account_id, order_id, mode, provider, status, amount, checkout,
             snap_token, description, customer, items, metadata, return_url, provider_options,
-            expires_at, method)
-         VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            expires_at, method, routed)
+         VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING *",
     )
     .bind(id)
@@ -326,6 +350,7 @@ pub async fn create(
     .bind(Json(&provider_options))
     .bind(expires_at)
     .bind(req.method.map(|m| m.as_str()))
+    .bind(routed)
     .fetch_one(&state.pool)
     .await;
     let row = match inserted {
@@ -340,6 +365,16 @@ pub async fn create(
         Err(e) => return Err(e.into()),
     };
 
+    // Nothing for the customer to pick: a provider with no standard methods, or whose every method is
+    // known to be refused (or, for a routed product, a single hosted option).
+    let immediate = match routing {
+        Some(r) => r.hosted_now,
+        None => {
+            info.methods.is_empty()
+                || (info.supports_provider_checkout
+                    && availability::all_inactive(account.id, &info.methods))
+        }
+    };
     let ctx = account.ctx(state);
     let charge: Option<std::result::Result<(ChargeOutput, bool), ProviderError>> =
         match (v.checkout, req.method) {
@@ -350,21 +385,14 @@ pub async fn create(
                     .map(|o| (o, false)),
             ),
             (Checkout::Snap, Some(_)) => Some(charge_standard(adapter, &ctx, &input, &info).await),
-            // A provider with no standard methods (Mayar, PayPal), or whose every method is known to
-            // be refused, has nothing for the customer to pick on the Snap page: its hosted checkout
-            // is created straight away and the Snap page shows the hop to it.
-            (Checkout::Snap, None)
-                if info.methods.is_empty()
-                    || (info.supports_provider_checkout
-                        && availability::all_inactive(account.id, &info.methods)) =>
-            {
-                Some(
-                    adapter
-                        .create_hosted(&ctx, &input)
-                        .await
-                        .map(|o| (o, false)),
-                )
-            }
+            // Nothing to pick: its hosted checkout is created straight away and the Snap page
+            // shows the hop to it.
+            (Checkout::Snap, None) if immediate => Some(
+                adapter
+                    .create_hosted(&ctx, &input)
+                    .await
+                    .map(|o| (o, false)),
+            ),
             (Checkout::Snap, None) => None,
         };
     let Some(charge) = charge else {
@@ -373,7 +401,7 @@ pub async fn create(
     match charge {
         Ok((out, fell_back)) => {
             let method = if fell_back { None } else { req.method };
-            Ok((store_charge(state, row.id, out, method).await?, false))
+            Ok((store_charge(state, row.id, out, method, None).await?, false))
         }
         Err(e) => {
             tracing::warn!(provider = %account.provider, payment = %row.id, error = %e, "provider charge failed");
@@ -394,7 +422,7 @@ fn replay_or_conflict(
 ) -> Result<PaymentRow> {
     if existing.status == PaymentStatus::Pending.as_str()
         && existing.amount == req.amount
-        && existing.provider == provider.as_str()
+        && (existing.routed || existing.provider == provider.as_str())
     {
         Ok(existing)
     } else {
@@ -427,11 +455,15 @@ async fn store_charge(
     id: Uuid,
     out: ChargeOutput,
     method: Option<Method>,
+    account: Option<&AccountRecord>,
 ) -> Result<PaymentRow> {
+    // `account` re-points a routed payment at the provider that took the charge.
     sqlx::query(
         "UPDATE payments
          SET instructions = $2, provider_ref = $3, provider_data = $4, payable_amount = $5,
-             method = $6, last_synced_at = now(), updated_at = now()
+             method = $6, provider = COALESCE($7::text, provider),
+             provider_account_id = COALESCE($8::uuid, provider_account_id),
+             last_synced_at = now(), updated_at = now()
          WHERE id = $1",
     )
     .bind(id)
@@ -440,13 +472,59 @@ async fn store_charge(
     .bind(Json(&out.provider_data))
     .bind(out.payable_amount)
     .bind(method.map(|m| m.as_str()))
+    .bind(account.map(|a| a.provider.as_str()))
+    .bind(account.map(|a| a.id))
     .execute(&state.pool)
     .await?;
     get(state, id).await
 }
 
-/// Snap: the customer picked a method; create the provider charge.
-pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Result<PaymentRow> {
+/// What the customer picked on the Snap page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    /// A standard method (QRIS, a virtual account).
+    Method(Method),
+    /// A provider's hosted checkout page (PayPal, Mayar, ...).
+    Checkout(Provider),
+}
+
+/// The provider that serves a choice. A payment created from the product's payment options goes to
+/// the provider the product chose for that option; any other payment stays with its own provider.
+async fn target_provider(state: &AppState, row: &PaymentRow, choice: Choice) -> Result<Provider> {
+    if row.routed
+        && let Some(options) = options::usable(state, row.product_id, row.mode()?).await?
+        && !options.is_empty()
+    {
+        let found = options.iter().find(|u| match choice {
+            Choice::Method(m) => u.option.kind == options::Kind::Method(m),
+            Choice::Checkout(p) => {
+                u.option.kind == options::Kind::Checkout && u.option.provider == p
+            }
+        });
+        return found
+            .map(|u| u.option.provider)
+            .ok_or_else(|| match choice {
+                Choice::Method(m) => AppError::unprocessable(
+                    "method_unsupported",
+                    format!("this product does not offer {m}"),
+                ),
+                Choice::Checkout(p) => AppError::unprocessable(
+                    "checkout_unsupported",
+                    format!("this product does not offer the {} checkout", p.label()),
+                ),
+            });
+    }
+    match choice {
+        Choice::Method(_) => row.provider(),
+        Choice::Checkout(_) => Err(AppError::unprocessable(
+            "checkout_unsupported",
+            "this payment has no hosted checkout to choose",
+        )),
+    }
+}
+
+/// Snap: the customer picked a method or a hosted checkout; create the provider charge.
+pub async fn choose(state: &AppState, token: &str, choice: Choice) -> Result<PaymentRow> {
     let row = get_by_token(state, token).await?;
     if row.status()? != PaymentStatus::Pending {
         return Err(AppError::conflict(
@@ -466,24 +544,47 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
             "a payment method was already selected",
         ));
     }
-    let provider = row.provider()?;
+    let provider = target_provider(state, &row, choice).await?;
     let adapter = providers::adapter(provider);
     let info = adapter.info();
-    if !info.methods.contains(&method) {
-        return Err(AppError::unprocessable(
-            "method_unsupported",
-            format!("{} does not support {method}", provider.label()),
-        ));
+    match choice {
+        Choice::Method(m) if !info.methods.contains(&m) => {
+            return Err(AppError::unprocessable(
+                "method_unsupported",
+                format!("{} does not support {m}", provider.label()),
+            ));
+        }
+        Choice::Checkout(_) if !info.supports_provider_checkout => {
+            return Err(AppError::unprocessable(
+                "checkout_unsupported",
+                format!("{} has no provider-hosted checkout", provider.label()),
+            ));
+        }
+        _ => {}
     }
-    // Reserve the choice so concurrent taps cannot create two charges.
-    let claimed = sqlx::query(
-        "UPDATE payments SET method = $2, updated_at = now()
-         WHERE id = $1 AND instructions IS NULL AND method IS NULL AND status = 'pending'",
-    )
-    .bind(row.id)
-    .bind(method.as_str())
-    .execute(&state.pool)
-    .await?;
+    // Reserve the choice so concurrent taps cannot create two charges. A method is reserved in the
+    // `method` column; a hosted checkout has none, so it leaves a marker in `provider_data`.
+    let claimed = match choice {
+        Choice::Method(m) => {
+            sqlx::query(
+                "UPDATE payments SET method = $2, updated_at = now()
+                 WHERE id = $1 AND instructions IS NULL AND method IS NULL AND status = 'pending'
+                   AND provider_data->>'choosing' IS NULL",
+            )
+            .bind(row.id)
+            .bind(m.as_str())
+            .execute(&state.pool)
+            .await?
+        }
+        Choice::Checkout(_) => sqlx::query(
+            "UPDATE payments SET provider_data = '{\"choosing\": true}'::jsonb, updated_at = now()
+                 WHERE id = $1 AND instructions IS NULL AND method IS NULL AND status = 'pending'
+                   AND provider_data->>'choosing' IS NULL",
+        )
+        .bind(row.id)
+        .execute(&state.pool)
+        .await?,
+    };
     if claimed.rows_affected() == 0 {
         return Err(AppError::conflict(
             "method_already_selected",
@@ -491,7 +592,41 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
         ));
     }
 
-    let account = accounts::load(state, row.provider_account_id).await?;
+    match charge_choice(state, &row, choice, provider, adapter, &info).await {
+        Ok(paid_row) => Ok(paid_row),
+        Err(e) => {
+            sqlx::query(
+                "UPDATE payments SET method = NULL, provider_data = '{}'::jsonb, updated_at = now()
+                 WHERE id = $1 AND instructions IS NULL",
+            )
+            .bind(row.id)
+            .execute(&state.pool)
+            .await?;
+            Err(e)
+        }
+    }
+}
+
+async fn charge_choice(
+    state: &AppState,
+    row: &PaymentRow,
+    choice: Choice,
+    provider: Provider,
+    adapter: &dyn ProviderAdapter,
+    info: &ProviderInfo,
+) -> Result<PaymentRow> {
+    let account = if provider.as_str() == row.provider {
+        accounts::load(state, row.provider_account_id).await?
+    } else {
+        accounts::find_enabled(state, row.mode()?, provider)
+            .await?
+            .ok_or_else(|| {
+                AppError::unprocessable(
+                    "provider_unavailable",
+                    format!("no enabled {} account", provider.label()),
+                )
+            })?
+    };
     let snap_url = state.snap_url(&row.snap_token);
     let snap_api_url = state.snap_api_url(&row.snap_token);
     let customer = row.customer.as_ref().map(|c| &c.0);
@@ -507,31 +642,37 @@ pub async fn choose_method(state: &AppState, token: &str, method: Method) -> Res
         snap_url: &snap_url,
         snap_api_url: &snap_api_url,
         provider_options: &row.provider_options.0,
-        method: Some(method),
+        method: match choice {
+            Choice::Method(m) => Some(m),
+            Choice::Checkout(_) => None,
+        },
     };
-    let result = match adapter.validate(&account.creds, &input, false) {
-        Ok(()) => charge_standard(adapter, &account.ctx(state), &input, &info)
-            .await
-            .map_err(|e| {
+    let hosted = matches!(choice, Choice::Checkout(_));
+    let ctx = account.ctx(state);
+    let result = match adapter.validate(&account.creds, &input, hosted) {
+        Ok(()) => {
+            let charge = if hosted {
+                adapter
+                    .create_hosted(&ctx, &input)
+                    .await
+                    .map(|o| (o, false))
+            } else {
+                charge_standard(adapter, &ctx, &input, info).await
+            };
+            charge.map_err(|e| {
                 tracing::warn!(%provider, payment = %row.id, error = %e, "provider charge failed");
                 provider_err(e)
-            }),
+            })
+        }
         Err(m) => Err(AppError::BadRequest(m)),
     };
-    match result {
-        Ok((out, fell_back)) => {
-            // On the hosted checkout the customer chooses there: no method is recorded.
-            let method = if fell_back { None } else { Some(method) };
-            store_charge(state, row.id, out, method).await
-        }
-        Err(e) => {
-            sqlx::query("UPDATE payments SET method = NULL, updated_at = now() WHERE id = $1 AND instructions IS NULL")
-                .bind(row.id)
-                .execute(&state.pool)
-                .await?;
-            Err(e)
-        }
-    }
+    let (out, fell_back) = result?;
+    // On a hosted checkout the customer chooses there: no method is recorded.
+    let method = match choice {
+        Choice::Method(m) if !fell_back => Some(m),
+        _ => None,
+    };
+    store_charge(state, row.id, out, method, Some(&account)).await
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

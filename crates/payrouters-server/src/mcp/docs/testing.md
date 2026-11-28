@@ -28,3 +28,5 @@ The result is a checklist with `pass`, `warn`, `fail` or `skipped` and what to f
 ## What the sandbox cannot show
 
 Midtrans and Xendit sandbox payments are paid with those providers' own simulators, not with `simulate_payment`. The mock provider follows the same pipeline (ledger, status, webhook), so a passing mock test proves the application's side.
+
+Payment options can be rehearsed with `mock`: for example `qris` and `va_bca` both served by `mock` shows the picker with exactly those methods and routes `method` requests; a sandbox product none of whose option providers has a sandbox account falls back to `mock` for everything. Hosted checkouts such as PayPal or Mayar only run against their own sandbox accounts.

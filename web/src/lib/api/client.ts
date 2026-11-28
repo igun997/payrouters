@@ -46,7 +46,7 @@ export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Record<string, QueryValue>;
 
 export interface RequestOptions {
-	method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 	query?: Query;
 	body?: unknown;
 	/** Bearer token to send. Defaults to the stored admin token; `null` sends no Authorization header. */

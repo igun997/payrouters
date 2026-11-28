@@ -1,18 +1,10 @@
 <script lang="ts">
-	/*
-	 * One payment method. States: idle, connecting (spinner, the others are disabled), error (the
-	 * provider refused the start; the row can be tapped again to retry).
-	 */
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import CircleAlert from '@lucide/svelte/icons/circle-alert';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	/* One standard payment method (QRIS or a bank virtual account) in the choose-how-to-pay list. */
 	import QrCode from '@lucide/svelte/icons/qr-code';
 	import BankTile from './bank-tile.svelte';
+	import PayRow from './pay-row.svelte';
 	import { bankBadge, methodShortName } from './method-meta';
 	import type { Method, SnapMethod } from '#lib/api/types';
-	import { cn } from '#lib/utils';
-
-	type RowState = 'idle' | 'connecting' | 'error';
 
 	let {
 		method,
@@ -21,8 +13,8 @@
 		onpick
 	}: {
 		method: SnapMethod;
-		state?: RowState;
-		/** Another method is starting; this row cannot be tapped. */
+		state?: 'idle' | 'connecting' | 'error';
+		/** Another row is starting; this one cannot be tapped. */
 		disabled?: boolean;
 		onpick: (code: Method) => void;
 	} = $props();
@@ -36,49 +28,24 @@
 	});
 </script>
 
-<button
-	type="button"
-	data-testid={`snap-method-${method.code}`}
-	data-state={state}
-	aria-busy={state === 'connecting'}
+<PayRow
+	testid={`snap-method-${method.code}`}
+	{state}
 	{disabled}
+	title={method.label}
+	{sub}
 	onclick={() => onpick(method.code)}
-	class={cn(
-		'flex min-h-16 w-full items-center gap-3 px-card py-3.5 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed sm:min-h-14 sm:py-2.5',
-		disabled && state !== 'connecting' && 'opacity-60'
-	)}
 >
-	{#if isQris}
-		<span
-			class="flex size-11 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
-			aria-hidden="true"
-		>
-			<QrCode class="size-5" />
-		</span>
-	{:else}
-		<BankTile text={badge} code={method.code} />
-	{/if}
-	<span class="flex min-w-0 flex-1 flex-col gap-1">
-		<span class="text-card-title font-semibold text-foreground">{method.label}</span>
-		{#if sub}
+	{#snippet leading()}
+		{#if isQris}
 			<span
-				class={cn(
-					'text-helper',
-					state === 'error' ? 'text-failed-foreground' : 'text-muted-foreground'
-				)}
+				class="flex size-11 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
+				aria-hidden="true"
 			>
-				{sub}
+				<QrCode class="size-5" />
 			</span>
+		{:else}
+			<BankTile text={badge} code={method.code} />
 		{/if}
-	</span>
-	{#if state === 'connecting'}
-		<LoaderCircle
-			class="size-5 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
-			aria-hidden="true"
-		/>
-	{:else if state === 'error'}
-		<CircleAlert class="size-5 shrink-0 text-failed-foreground" aria-hidden="true" />
-	{:else}
-		<ChevronRight class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-	{/if}
-</button>
+	{/snippet}
+</PayRow>
